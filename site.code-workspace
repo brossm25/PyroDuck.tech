@@ -1,0 +1,44 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "js/ts.preferences.quoteStyle": "double",
+        "[typescript]": {
+            "editor.defaultFormatter": "esbenp.prettier-vscode",
+            "editor.formatOnSave": true,
+            "editor.tabSize": 2
+        },
+        "[javascript]": {
+            "editor.defaultFormatter": "esbenp.prettier-vscode",
+            "editor.formatOnSave": true,
+            "editor.tabSize": 2
+        },
+        "nix.enableLanguageServer": true,
+        "nix.serverPath": "nixd",
+        "nix.serverSettings": {
+          "nixd": {
+            "formatting": {
+              "command": [
+                "nixfmt"
+              ]
+            }
+          }
+        },
+        "[nix]": {
+          "editor.defaultFormatter": "jnoortheen.nix-ide",
+          "editor.formatOnSave": true,
+          "editor.tabSize": 2,
+          "editor.insertSpaces": true,
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "astro-build.astro-vscode",
+            "jnoortheen.nix-ide",
+            "esbenp.prettier-vscode"
+        ]
+    }
+}
