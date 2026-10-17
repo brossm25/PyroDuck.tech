@@ -4,7 +4,26 @@ import type { Project } from "@/data/projects";
 
 type Props = Project;
 
-const { name, status, description, url, image, imageAlt } = Astro.props;
+const {
+  name,
+  status,
+  description,
+  url,
+  image,
+  imageAlt,
+  gallery = [],
+} = Astro.props;
+
+const screenshots = image
+  ? [
+      {
+        image,
+        alt: imageAlt ?? `${name} website preview`,
+        label: "Desktop",
+      },
+      ...gallery,
+    ]
+  : [];
 ---
 
 <article
@@ -12,14 +31,64 @@ const { name, status, description, url, image, imageAlt } = Astro.props;
 >
   {
     image && (
-      <Image
-        src={image}
-        alt={imageAlt ?? `${name} website preview`}
-        width={960}
-        format="webp"
-        loading="lazy"
-        class="mb-6 h-auto w-full rounded-lg border border-pyroduck-plasma/20"
-      />
+      <project-preview>
+        <button
+          type="button"
+          class="preview-trigger"
+          aria-label={`Enlarge ${name} screenshot`}
+          aria-haspopup="dialog"
+        >
+          <Image
+            src={image}
+            alt={imageAlt ?? `${name} website preview`}
+            width={960}
+            format="webp"
+            loading="lazy"
+            class="h-auto w-full"
+          />
+          <span class="preview-hint">View larger ↗</span>
+        </button>
+
+        <dialog aria-label={`${name} screenshot`} class="preview-dialog">
+          <form method="dialog" class="preview-controls">
+            <button type="submit" class="preview-close" autofocus>
+              Close ✕
+            </button>
+          </form>
+
+          <div class="gallery-tabs" role="group" aria-label="Screenshot views">
+            {screenshots.map((screenshot, index) => (
+              <button
+                type="button"
+                class="gallery-tab"
+                data-view={index}
+                aria-pressed={index === 0 ? "true" : "false"}
+              >
+                {screenshot.label}
+              </button>
+            ))}
+          </div>
+
+          <div class="gallery-stage">
+            {screenshots.map((screenshot, index) => (
+              <div
+                class="gallery-panel"
+                data-panel={index}
+                hidden={index !== 0}
+              >
+                <Image
+                  src={screenshot.image}
+                  alt={screenshot.alt}
+                  width={screenshot.image.width}
+                  format="webp"
+                  loading="lazy"
+                  class="preview-full"
+                />
+              </div>
+            ))}
+          </div>
+        </dialog>
+      </project-preview>
     )
   }
 
@@ -44,6 +113,60 @@ const { name, status, description, url, image, imageAlt } = Astro.props;
   }
 </article>
 
+<script>
+  class ProjectPreview extends HTMLElement {
+    connectedCallback() {
+      const trigger = this.querySelector<HTMLButtonElement>(".preview-trigger");
+      const dialog = this.querySelector<HTMLDialogElement>("dialog");
+
+      if (!trigger || !dialog || this.dataset.ready) return;
+      this.dataset.ready = "true";
+
+      trigger.addEventListener("click", () => dialog.showModal());
+
+      const viewButtons =
+        this.querySelectorAll<HTMLButtonElement>("[data-view]");
+      const panels = this.querySelectorAll<HTMLElement>("[data-panel]");
+
+      viewButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const selected = button.dataset.view;
+
+          viewButtons.forEach((viewButton) => {
+            viewButton.setAttribute(
+              "aria-pressed",
+              String(viewButton.dataset.view === selected),
+            );
+          });
+
+          panels.forEach((panel) => {
+            panel.hidden = panel.dataset.panel !== selected;
+          });
+        });
+      });
+
+      dialog.addEventListener("click", (event) => {
+        if (event.target !== dialog) return;
+
+        const bounds = dialog.getBoundingClientRect();
+
+        if (
+          event.clientX < bounds.left ||
+          event.clientX > bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY > bounds.bottom
+        ) {
+          dialog.close();
+        }
+      });
+    }
+  }
+
+  if (!customElements.get("project-preview")) {
+    customElements.define("project-preview", ProjectPreview);
+  }
+</script>
+
 <style>
   .project-card {
     position: relative;
@@ -58,6 +181,87 @@ const { name, status, description, url, image, imageAlt } = Astro.props;
       0 12px 18px rgb(0 0 0 / 45%);
 
     transition: top 180ms ease;
+  }
+
+  project-preview {
+    display: block;
+    margin-bottom: 1.5rem;
+  }
+
+  .preview-trigger {
+    display: block;
+    width: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 65%, transparent);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+    cursor: zoom-in;
+    transition: border-color 180ms ease;
+  }
+
+  .preview-trigger img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .preview-trigger:hover {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .preview-trigger:focus-visible,
+  .preview-close:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .preview-hint {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-pyroduck-plasma);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: right;
+  }
+
+  .preview-dialog {
+    width: min(1200px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1rem;
+    overflow: auto;
+    border: 2px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-void);
+  }
+
+  .preview-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .preview-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+  }
+
+  .preview-close {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .preview-full {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
   }
 
   .project-card::before {
@@ -89,5 +293,49 @@ const { name, status, description, url, image, imageAlt } = Astro.props;
     .project-card:hover {
       top: 0;
     }
+  }
+
+  .gallery-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .gallery-tab {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .gallery-tab[aria-pressed="true"] {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .gallery-tab:hover {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .gallery-tab:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .gallery-panel[hidden] {
+    display: none;
+  }
+
+  .gallery-panel .preview-full {
+    width: auto;
+    max-width: 100%;
+    max-height: 70dvh;
+    margin-inline: auto;
+    object-fit: contain;
   }
 </style>
