@@ -1,0 +1,19 @@
+
+/*
+ * PyroDuck Tech Signature Palette
+ * The official PyroDuck Design System
+ */
+
+@theme {
+    /* Signature Brand Colors */
+    --color-pyroduck-afterdark: #10071b;
+    --color-pyroduck-royal: #3b038d;
+    --color-pyroduck-plasma: #a444fc;
+    --color-pyroduck-lime: #b5fb14;
+    --color-pyroduck-void: #000000;
+
+    /* Supporting Colors */
+    --color-brand-surface: #21112f;
+    --color-brand-text: #f7f3ff;
+    --color-brand-muted: #d6c9e5;
+}

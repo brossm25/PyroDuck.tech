@@ -1,0 +1,142 @@
+---
+import { site } from "@/data/site";
+---
+
+<header class="sticky top-0 z-50 bg-pyroduck-void">
+  <div
+    class="relative mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:flex sm:gap-4 sm:px-6 lg:px-8"
+  >
+    <!-- Logo -->
+    <a
+      href="/"
+      class="col-start-1 row-start-1 justify-self-start rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime sm:shrink-0"
+      aria-label={`${site.name} homepage`}
+    >
+      <img
+        src="/images/pyroduck-logo-primary-web-safe.svg"
+        alt={`${site.name} logo`}
+        width="96"
+        height="96"
+        class="h-16 w-16 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24"
+      />
+    </a>
+
+    <!-- Site name -->
+    <a
+      href="/"
+      class="col-start-2 row-start-1 rounded-lg text-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+    >
+      <span
+        class="bg-linear-to-r from-brand-text via-pyroduck-plasma to-pyroduck-lime bg-clip-text text-xl font-bold tracking-wide text-transparent sm:text-2xl"
+      >
+        {site.name}
+      </span>
+    </a>
+
+    <!-- Mobile navigation -->
+    <details
+      class="group relative col-start-3 row-start-1 justify-self-end sm:hidden"
+    >
+      <summary
+        class="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg text-brand-text transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime [&::-webkit-details-marker]:hidden"
+        aria-label="Main navigation menu"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          class="h-7 w-7"
+          aria-hidden="true"
+        >
+          <path d="M4 6h16M4 12h16M4 18h16" class="group-open:hidden"></path>
+          <path d="m6 6 12 12M18 6 6 18" class="hidden group-open:block"></path>
+        </svg>
+      </summary>
+
+      <nav
+        aria-label="Mobile navigation"
+        class="absolute right-0 top-full mt-3 min-w-44 rounded-xl border border-pyroduck-plasma/30 bg-black p-2 shadow-xl"
+      >
+        <a
+          href="/"
+          class="block rounded-lg px-4 py-3 text-lg font-medium text-brand-text transition-colors hover:bg-pyroduck-plasma/10 hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+        >
+          Home
+        </a>
+      </nav>
+    </details>
+
+    <!-- Desktop navigation -->
+    <nav aria-label="Main navigation" class="ml-auto hidden sm:block">
+      <a
+        href="/"
+        class="rounded-lg px-4 py-2 text-xl font-medium text-brand-text transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+      >
+        Home
+      </a>
+    </nav>
+  </div>
+
+  <div class="header-circuit" aria-hidden="true">
+    <span class="header-circuit-pulse"></span>
+  </div>
+</header>
+
+<style>
+  .header-circuit {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 2px;
+    overflow: hidden;
+    pointer-events: none;
+    background: color-mix(
+      in srgb,
+      var(--color-pyroduck-plasma) 35%,
+      transparent
+    );
+  }
+
+  .header-circuit-pulse {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 120px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-pyroduck-plasma),
+      var(--color-pyroduck-lime),
+      transparent
+    );
+    animation: circuit-travel 6s linear infinite;
+  }
+
+  @keyframes circuit-travel {
+    from {
+      left: 0;
+      transform: translateX(-100%);
+    }
+    to {
+      left: 100%;
+      transform: translateX(0);
+    }
+  }
+
+  @media (max-width: 639px) {
+    .header-circuit-pulse {
+      animation-duration: 3s;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .header-circuit-pulse {
+      animation: none;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+</style>

@@ -1,6 +1,114 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import ProjectCard from "@/components/ProjectCard.astro";
+import { projects } from "@/data/projects";
 ---
+
 <Layout title="Home">
-    This is the home page.
+  <section aria-labelledby="hero-heading" class="px-6 py-20 sm:py-28 lg:py-36">
+    <div class="mx-auto max-w-5xl">
+      <p
+        class="mb-5 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        Create. Solve. Keep learning.
+      </p>
+
+      <h1
+        id="hero-heading"
+        class="max-w-4xl text-4xl font-bold leading-tight tracking-tight text-brand-text sm:text-6xl lg:text-7xl"
+      >
+        Practical websites.
+        <span class="block text-pyroduck-plasma"> Creative solutions. </span>
+      </h1>
+
+      <p
+        class="mt-8 max-w-2xl text-lg leading-relaxed text-brand-muted sm:text-xl"
+      >
+        I’m Brent, also known as Ducky. I’m building my experience in web
+        development through real projects that help people and organizations
+        connect with their communities.
+      </p>
+
+      <div class="mt-10 flex flex-wrap justify-center gap-4 sm:justify-start">
+        <a
+          href="#work"
+          class="rounded-lg bg-pyroduck-plasma px-6 py-3 font-semibold text-pyroduck-void transition-colors hover:bg-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+        >
+          Explore My Work
+        </a>
+
+        <a
+          href="#contact"
+          class="rounded-lg border border-pyroduck-plasma px-6 py-3 font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+        >
+          Work With Me
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="work"
+    aria-labelledby="work-heading"
+    class="scroll-mt-32 px-6 py-16 sm:py-24"
+  >
+    <div class="mx-auto max-w-5xl">
+      <p
+        class="mb-3 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        My portfolio
+      </p>
+
+      <h2
+        id="work-heading"
+        class="text-3xl font-bold text-brand-text sm:text-4xl"
+      >
+        Learning through real projects.
+      </h2>
+
+      <div class="project-grid mt-10 grid gap-6 md:grid-cols-2">
+        {projects.map((project) => <ProjectCard {...project} />)}
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="contact"
+    aria-labelledby="contact-heading"
+    class="scroll-mt-32 px-6 py-16 sm:py-24"
+  >
+    <div class="mx-auto max-w-5xl border-t border-pyroduck-plasma/25 pt-12">
+      <p
+        class="mb-3 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        Work with me
+      </p>
+
+      <h2
+        id="contact-heading"
+        class="text-3xl font-bold text-brand-text sm:text-4xl"
+      >
+        Have a website in mind?
+      </h2>
+
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-brand-muted">
+        I’m open to website projects and opportunities to keep growing as a
+        developer. Have an idea? Let’s talk.
+      </p>
+
+      <a
+        href="mailto:ducky@pyroduck.tech"
+        class="mt-6 inline-block rounded-sm text-lg font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+      >
+        ducky@pyroduck.tech
+      </a>
+    </div>
+  </section>
 </Layout>
+
+<style>
+  .project-grid {
+    position: relative;
+    isolation: isolate;
+  }
+</style>
