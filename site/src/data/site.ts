@@ -8,4 +8,6 @@ export const site = {
   socialImage: "/images/pyroduck-social-preview-create-solve-learn.png",
   socialImageAlt:
     "PyroDuck Tech in purple and lime with the tagline Create. Solve. Keep learning.",
+  projectInquiryUrl:
+    "https://docs.google.com/forms/d/e/1FAIpQLScDwTs3J0_Rmkf4yU5cQyOyqfkjeIBGfdd4OyHi_tgp7hyALg/viewform",
 } as const;

@@ -2,6 +2,7 @@
 import Layout from "@/layouts/Layout.astro";
 import ProjectCard from "@/components/ProjectCard.astro";
 import { projects } from "@/data/projects";
+import { site } from "@/data/site";
 ---
 
 <Layout title="Home">
@@ -143,12 +144,28 @@ import { projects } from "@/data/projects";
         developer. Have an idea? Let’s talk.
       </p>
 
-      <a
-        href="mailto:ducky@pyroduck.tech"
-        class="mt-6 inline-block rounded-sm text-lg font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
-      >
-        ducky@pyroduck.tech
-      </a>
+      <div class="mt-8 flex flex-col items-start gap-5">
+        <a
+          href={site.projectInquiryUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 rounded-lg bg-pyroduck-plasma px-6 py-3 font-semibold text-pyroduck-void transition-colors hover:bg-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+        >
+          Tell me about your project
+          <span aria-hidden="true">↗</span>
+          <span class="sr-only">(opens in a new tab)</span>
+        </a>
+
+        <p class="text-brand-muted">
+          Prefer email?{" "}
+          <a
+            href="mailto:ducky@pyroduck.tech"
+            class="rounded-sm font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+          >
+            ducky@pyroduck.tech
+          </a>
+        </p>
+      </div>
     </div>
   </section>
 </Layout>
