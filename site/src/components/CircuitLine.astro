@@ -1,0 +1,58 @@
+<div class="circuit-line" aria-hidden="true">
+  <span></span>
+</div>
+
+<style>
+  .circuit-line {
+    position: relative;
+    width: 100%;
+    height: 2px;
+    overflow: hidden;
+    pointer-events: none;
+    background: color-mix(
+      in srgb,
+      var(--color-pyroduck-plasma) 35%,
+      transparent
+    );
+  }
+
+  .circuit-line span {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 120px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-pyroduck-plasma),
+      var(--color-pyroduck-lime),
+      transparent
+    );
+    animation: circuit-travel 6s linear infinite;
+  }
+
+  @keyframes circuit-travel {
+    from {
+      left: 0;
+      transform: translateX(-100%);
+    }
+    to {
+      left: 100%;
+      transform: translateX(0);
+    }
+  }
+
+  @media (max-width: 639px) {
+    .circuit-line span {
+      animation-duration: 3s;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .circuit-line span {
+      animation: none;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+</style>

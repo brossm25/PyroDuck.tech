@@ -1,5 +1,6 @@
 ---
 import { site } from "@/data/site";
+import CircuitLine from "@/components/CircuitLine.astro";
 
 const navigation = [
   { label: "Work", href: "/#work" },
@@ -10,7 +11,7 @@ const navigation = [
 
 <header class="sticky top-0 z-50 bg-pyroduck-void">
   <div
-    class="relative mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:flex sm:gap-4 sm:px-6 lg:px-8"
+    class="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:flex sm:gap-4 sm:px-6 lg:px-8"
   >
     <!-- Logo -->
     <a
@@ -96,67 +97,9 @@ const navigation = [
         }
       </ul>
     </nav>
-
-    <div class="header-circuit" aria-hidden="true">
-      <span class="header-circuit-pulse"></span>
-    </div>
   </div>
 
-  <style>
-    .header-circuit {
-      position: absolute;
-      inset-inline: 0;
-      bottom: 0;
-      height: 2px;
-      overflow: hidden;
-      pointer-events: none;
-      background: color-mix(
-        in srgb,
-        var(--color-pyroduck-plasma) 35%,
-        transparent
-      );
-    }
-
-    .header-circuit-pulse {
-      position: absolute;
-      inset-block: 0;
-      left: 0;
-      width: 120px;
-      background: linear-gradient(
-        90deg,
-        transparent,
-        var(--color-pyroduck-plasma),
-        var(--color-pyroduck-lime),
-        transparent
-      );
-      animation: circuit-travel 6s linear infinite;
-    }
-
-    @keyframes circuit-travel {
-      from {
-        left: 0;
-        transform: translateX(-100%);
-      }
-      to {
-        left: 100%;
-        transform: translateX(0);
-      }
-    }
-
-    @media (max-width: 639px) {
-      .header-circuit-pulse {
-        animation-duration: 3s;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .header-circuit-pulse {
-        animation: none;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-    }
-  </style>
+  <CircuitLine />
 </header>
 
 <script>

@@ -1,40 +1,145 @@
 ---
 import { site } from "@/data/site";
+import CircuitLine from "@/components/CircuitLine.astro";
 
 const year = new Date().getFullYear();
 ---
 
-<footer class="border-t border-pyroduck-plasma/25 px-6 py-8">
-  <div
-    class="mx-auto grid max-w-5xl grid-cols-1 items-center justify-items-center gap-4 text-sm sm:grid-cols-3"
-  >
-    <p class="text-brand-muted sm:justify-self-start">
+<footer>
+  <CircuitLine />
+
+  <div class="footer-content">
+    <p class="footer-copyright text-brand-muted">
       &copy; {year}{" "}{site.name}
     </p>
 
     <a
       href="https://www.youtube.com/@pyroducktech"
       aria-label="PyroDuck Tech on YouTube"
-      class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+      class="footer-youtube footer-link"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
         fill="currentColor"
-        class="h-7 w-7"
         aria-hidden="true"
+        class="h-7 w-7"
       >
         <path
-          d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.2 3.6-6.2 3.6Z"
+          fill-rule="evenodd"
+          d="M5 4h14a5 5 0 0 1 5 5v6a5 5 0 0 1-5 5H5a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Zm5 4v8l7-4-7-4Z"
         ></path>
       </svg>
     </a>
 
-    <a
-      href="#top"
-      class="rounded-sm font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime sm:justify-self-end"
-    >
+    <a href="#top" class="footer-top footer-link">
       Back to top <span aria-hidden="true">↑</span>
     </a>
   </div>
 </footer>
+
+<style>
+  .footer-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+    width: 100%;
+    padding: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .footer-copyright {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    text-align: center;
+  }
+
+  .footer-youtube {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+  }
+
+  .footer-top {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 44px;
+  }
+
+  .footer-link {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+    border-radius: 0.5rem;
+    transition: color 180ms ease;
+  }
+
+  .footer-link:hover {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .footer-link:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  /* Mobile */
+  @media (max-width: 639px) {
+    .footer-content {
+      grid-template-columns: 1fr auto auto 1fr;
+      gap: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .footer-youtube {
+      grid-column: 2;
+      justify-self: center;
+    }
+
+    .footer-top {
+      grid-column: 3;
+      justify-self: center;
+    }
+
+    .footer-copyright {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      margin: 0;
+      text-align: center;
+      font-size: 0.75rem;
+    }
+  }
+
+  /* Desktop */
+  @media (min-width: 640px) {
+    .footer-content {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      padding: 2rem;
+    }
+
+    .footer-copyright {
+      grid-column: 1;
+      grid-row: 1;
+      text-align: left;
+    }
+
+    .footer-youtube {
+      grid-column: 2;
+      justify-self: center;
+    }
+
+    .footer-top {
+      grid-column: 3;
+      justify-self: end;
+    }
+  }
+</style>
