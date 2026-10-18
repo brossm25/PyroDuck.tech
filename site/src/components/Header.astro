@@ -1,5 +1,11 @@
 ---
 import { site } from "@/data/site";
+
+const navigation = [
+  { label: "Work", href: "/#work" },
+  { label: "About", href: "/#about" },
+  { label: "Contact", href: "/#contact" },
+];
 ---
 
 <header class="sticky top-0 z-50 bg-pyroduck-void">
@@ -60,83 +66,114 @@ import { site } from "@/data/site";
         aria-label="Mobile navigation"
         class="absolute right-0 top-full mt-3 min-w-44 rounded-xl border border-pyroduck-plasma/30 bg-black p-2 shadow-xl"
       >
-        <a
-          href="/"
-          class="block rounded-lg px-4 py-3 text-lg font-medium text-brand-text transition-colors hover:bg-pyroduck-plasma/10 hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
-        >
-          Home
-        </a>
+        {
+          navigation.map(({ label, href }) => (
+            <a
+              href={href}
+              class="block rounded-lg px-4 py-3 text-lg font-medium text-brand-text transition-colors hover:bg-pyroduck-plasma/10 hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+            >
+              {label}
+            </a>
+          ))
+        }
       </nav>
     </details>
 
     <!-- Desktop navigation -->
     <nav aria-label="Main navigation" class="ml-auto hidden sm:block">
-      <a
-        href="/"
-        class="rounded-lg px-4 py-2 text-xl font-medium text-brand-text transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
-      >
-        Home
-      </a>
+      <ul class="flex items-center gap-1">
+        {
+          navigation.map(({ label, href }) => (
+            <li>
+              <a
+                href={href}
+                class="block rounded-lg px-3 py-2 text-lg font-medium text-brand-text transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime lg:px-4 lg:text-xl"
+              >
+                {label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
     </nav>
+
+    <div class="header-circuit" aria-hidden="true">
+      <span class="header-circuit-pulse"></span>
+    </div>
   </div>
 
-  <div class="header-circuit" aria-hidden="true">
-    <span class="header-circuit-pulse"></span>
-  </div>
+  <style>
+    .header-circuit {
+      position: absolute;
+      inset-inline: 0;
+      bottom: 0;
+      height: 2px;
+      overflow: hidden;
+      pointer-events: none;
+      background: color-mix(
+        in srgb,
+        var(--color-pyroduck-plasma) 35%,
+        transparent
+      );
+    }
+
+    .header-circuit-pulse {
+      position: absolute;
+      inset-block: 0;
+      left: 0;
+      width: 120px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        var(--color-pyroduck-plasma),
+        var(--color-pyroduck-lime),
+        transparent
+      );
+      animation: circuit-travel 6s linear infinite;
+    }
+
+    @keyframes circuit-travel {
+      from {
+        left: 0;
+        transform: translateX(-100%);
+      }
+      to {
+        left: 100%;
+        transform: translateX(0);
+      }
+    }
+
+    @media (max-width: 639px) {
+      .header-circuit-pulse {
+        animation-duration: 3s;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .header-circuit-pulse {
+        animation: none;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+    }
+  </style>
 </header>
 
-<style>
-  .header-circuit {
-    position: absolute;
-    inset-inline: 0;
-    bottom: 0;
-    height: 2px;
-    overflow: hidden;
-    pointer-events: none;
-    background: color-mix(
-      in srgb,
-      var(--color-pyroduck-plasma) 35%,
-      transparent
-    );
-  }
+<script>
+  document
+    .querySelectorAll<HTMLDetailsElement>("header details")
+    .forEach((menu) => {
+      menu.querySelectorAll<HTMLAnchorElement>("nav a").forEach((link) => {
+        link.addEventListener("click", () => {
+          menu.open = false;
+        });
+      });
 
-  .header-circuit-pulse {
-    position: absolute;
-    inset-block: 0;
-    left: 0;
-    width: 120px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-pyroduck-plasma),
-      var(--color-pyroduck-lime),
-      transparent
-    );
-    animation: circuit-travel 6s linear infinite;
-  }
-
-  @keyframes circuit-travel {
-    from {
-      left: 0;
-      transform: translateX(-100%);
-    }
-    to {
-      left: 100%;
-      transform: translateX(0);
-    }
-  }
-
-  @media (max-width: 639px) {
-    .header-circuit-pulse {
-      animation-duration: 3s;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .header-circuit-pulse {
-      animation: none;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-  }
-</style>
+      menu.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && menu.open) {
+          menu.open = false;
+          menu.querySelector("summary")?.focus();
+        }
+      });
+    });
+</script>
