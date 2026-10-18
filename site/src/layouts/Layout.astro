@@ -11,6 +11,10 @@ interface Props {
 }
 
 const { title, description = site.description } = Astro.props;
+
+const pageTitle = `${title} | ${site.name}`;
+const canonicalURL = new URL(Astro.url.pathname, site.url);
+const socialImageURL = new URL(site.socialImage, site.url);
 ---
 
 <!doctype html>
@@ -18,12 +22,30 @@ const { title, description = site.description } = Astro.props;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>{pageTitle}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL.href} />
     <link rel="icon" type="image/png" href="/images/pyroduck-fav-icon-v2.png" />
-    <title>{title} | {site.name}</title>
+
+    <!-- Link-sharing previews -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={`${site.name} | ${site.tagline}`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL.href} />
+    <meta property="og:image" content={socialImageURL.href} />
+    <meta property="og:image:alt" content={site.socialImageAlt} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${site.name} | ${site.tagline}`} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageURL.href} />
+    <meta name="twitter:image:alt" content={site.socialImageAlt} />
   </head>
 
   <body
+    id="top"
     class="antialiased flex flex-col min-h-screen bg-pyroduck-void text-brand-text"
   >
     <Header />
@@ -31,6 +53,7 @@ const { title, description = site.description } = Astro.props;
     <main class="flex-grow">
       <slot />
     </main>
+
     <Footer />
   </body>
 </html>
