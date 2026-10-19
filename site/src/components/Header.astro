@@ -43,6 +43,7 @@ const navigation = [
     <!-- Mobile navigation -->
     <details
       class="group relative col-start-3 row-start-1 justify-self-end sm:hidden"
+      data-header-menu
     >
       <summary
         class="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg text-brand-text transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime [&::-webkit-details-marker]:hidden"
@@ -65,7 +66,7 @@ const navigation = [
 
       <nav
         aria-label="Mobile navigation"
-        class="absolute right-0 top-full mt-3 min-w-44 rounded-xl border border-pyroduck-plasma/30 bg-black p-2 shadow-xl"
+        class="absolute right-0 top-full mt-3 min-w-56 rounded-xl border border-pyroduck-plasma/30 bg-black p-2 shadow-xl"
       >
         {
           navigation.map(({ label, href }) => (
@@ -77,11 +78,95 @@ const navigation = [
             </a>
           ))
         }
+
+        <div class="mt-2 border-t border-pyroduck-plasma/20 px-2 pt-2">
+          <div class="header-auth-signed-in hidden space-y-2">
+            <p
+              class="header-auth-email truncate px-2 text-sm text-brand-muted"
+            ></p>
+            <button
+              type="button"
+              class="header-auth-sign-out w-full rounded-lg border border-pyroduck-plasma px-4 py-2.5 text-left text-base font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+            >
+              Log out
+            </button>
+          </div>
+
+          <details class="header-auth-guest group/auth relative">
+            <summary
+              class="cursor-pointer list-none rounded-lg px-4 py-3 text-lg font-medium text-brand-text transition-colors hover:bg-pyroduck-plasma/10 hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-pyroduck-lime [&::-webkit-details-marker]:hidden"
+            >
+              Log in
+            </summary>
+            <div
+              class="mt-2 rounded-lg border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-3"
+            >
+              <p
+                class="header-auth-status mb-3 text-sm text-brand-muted"
+                role="status"
+              ></p>
+              <form class="header-auth-form flex flex-col gap-3">
+                <div>
+                  <label
+                    for="header-auth-email-mobile"
+                    class="mb-1 block text-sm font-semibold text-brand-text"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="header-auth-email-mobile"
+                    name="email"
+                    type="email"
+                    required
+                    autocomplete="email"
+                    class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-void px-3 py-2 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+                  />
+                </div>
+                <div>
+                  <label
+                    for="header-auth-password-mobile"
+                    class="mb-1 block text-sm font-semibold text-brand-text"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id="header-auth-password-mobile"
+                    name="password"
+                    type="password"
+                    required
+                    minlength="6"
+                    autocomplete="current-password"
+                    class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-void px-3 py-2 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+                  />
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    data-account-action="login"
+                    class="rounded-lg bg-pyroduck-plasma px-4 py-2 text-sm font-semibold text-pyroduck-void transition-colors hover:bg-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime disabled:opacity-60"
+                  >
+                    Log in
+                  </button>
+                  <button
+                    type="submit"
+                    data-account-action="signup"
+                    class="rounded-lg border border-pyroduck-plasma px-4 py-2 text-sm font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime disabled:opacity-60"
+                  >
+                    Sign up
+                  </button>
+                </div>
+              </form>
+            </div>
+          </details>
+        </div>
       </nav>
     </details>
 
     <!-- Desktop navigation -->
-    <nav aria-label="Main navigation" class="ml-auto hidden sm:block">
+    <nav
+      aria-label="Main navigation"
+      class="ml-auto hidden items-center gap-1 sm:flex"
+    >
       <ul class="flex items-center gap-1">
         {
           navigation.map(({ label, href }) => (
@@ -96,6 +181,89 @@ const navigation = [
           ))
         }
       </ul>
+
+      <div class="header-auth-signed-in ml-2 hidden items-center gap-2">
+        <span
+          class="header-auth-email max-w-[10rem] truncate text-sm text-brand-muted lg:max-w-[14rem]"
+          title=""
+        ></span>
+        <button
+          type="button"
+          class="header-auth-sign-out rounded-lg border border-pyroduck-plasma px-3 py-1.5 text-sm font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime lg:px-4"
+        >
+          Log out
+        </button>
+      </div>
+
+      <details class="header-auth-guest relative ml-2">
+        <summary
+          class="cursor-pointer list-none rounded-lg border border-pyroduck-plasma px-3 py-1.5 text-sm font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime lg:px-4 [&::-webkit-details-marker]:hidden"
+        >
+          Log in
+        </summary>
+        <div
+          class="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-pyroduck-plasma/30 bg-black p-4 shadow-xl"
+        >
+          <p class="mb-1 text-sm font-semibold text-brand-text">
+            Chase list account
+          </p>
+          <p
+            class="header-auth-status mb-3 text-sm text-brand-muted"
+            role="status"
+          ></p>
+          <form class="header-auth-form flex flex-col gap-3">
+            <div>
+              <label
+                for="header-auth-email-desktop"
+                class="mb-1 block text-sm font-semibold text-brand-text"
+              >
+                Email
+              </label>
+              <input
+                id="header-auth-email-desktop"
+                name="email"
+                type="email"
+                required
+                autocomplete="email"
+                class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-void px-3 py-2 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+              />
+            </div>
+            <div>
+              <label
+                for="header-auth-password-desktop"
+                class="mb-1 block text-sm font-semibold text-brand-text"
+              >
+                Password
+              </label>
+              <input
+                id="header-auth-password-desktop"
+                name="password"
+                type="password"
+                required
+                minlength="6"
+                autocomplete="current-password"
+                class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-void px-3 py-2 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+              />
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                data-account-action="login"
+                class="rounded-lg bg-pyroduck-plasma px-4 py-2 text-sm font-semibold text-pyroduck-void transition-colors hover:bg-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime disabled:opacity-60"
+              >
+                Log in
+              </button>
+              <button
+                type="submit"
+                data-account-action="signup"
+                class="rounded-lg border border-pyroduck-plasma px-4 py-2 text-sm font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime disabled:opacity-60"
+              >
+                Sign up
+              </button>
+            </div>
+          </form>
+        </div>
+      </details>
     </nav>
   </div>
 
@@ -103,6 +271,165 @@ const navigation = [
 </header>
 
 <script>
+  import { supabase } from "@/lib/supabase";
+
+  const guestBlocks = document.querySelectorAll<HTMLElement>(".header-auth-guest");
+  const signedInBlocks = document.querySelectorAll<HTMLElement>(
+    ".header-auth-signed-in",
+  );
+  const emailLabels = document.querySelectorAll<HTMLElement>(".header-auth-email");
+  const statusNodes = document.querySelectorAll<HTMLElement>(".header-auth-status");
+  const forms = document.querySelectorAll<HTMLFormElement>(".header-auth-form");
+  const signOutButtons = document.querySelectorAll<HTMLButtonElement>(
+    ".header-auth-sign-out",
+  );
+
+  let pendingAction: "login" | "signup" = "login";
+
+  function setStatus(message: string) {
+    statusNodes.forEach((node) => {
+      node.textContent = message;
+    });
+  }
+
+  function setBusy(busy: boolean) {
+    forms.forEach((form) => {
+      form.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+        button.disabled = busy;
+      });
+    });
+    signOutButtons.forEach((button) => {
+      button.disabled = busy;
+    });
+  }
+
+  function showSession(email: string | undefined) {
+    if (email) {
+      guestBlocks.forEach((block) => {
+        block.classList.add("hidden");
+        if (block instanceof HTMLDetailsElement) block.open = false;
+      });
+      signedInBlocks.forEach((block) => {
+        block.classList.remove("hidden");
+        // Desktop chip uses flex row; mobile menu block stays stacked
+        if (block.classList.contains("items-center")) {
+          block.classList.add("flex");
+        }
+      });
+      emailLabels.forEach((label) => {
+        label.textContent = email;
+        label.setAttribute("title", email);
+      });
+      setStatus("");
+      return;
+    }
+
+    signedInBlocks.forEach((block) => {
+      block.classList.add("hidden");
+      block.classList.remove("flex");
+    });
+    guestBlocks.forEach((block) => {
+      block.classList.remove("hidden");
+    });
+    emailLabels.forEach((label) => {
+      label.textContent = "";
+      label.removeAttribute("title");
+    });
+  }
+
+  async function refreshSession() {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      setStatus(error.message);
+      showSession(undefined);
+      return;
+    }
+    showSession(data.session?.user.email);
+  }
+
+  forms.forEach((form) => {
+    form
+      .querySelectorAll<HTMLButtonElement>("button[data-account-action]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const action = button.dataset.accountAction;
+          if (action === "signup" || action === "login") {
+            pendingAction = action;
+          }
+        });
+      });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const data = new FormData(form);
+      const email = String(data.get("email") ?? "").trim();
+      const password = String(data.get("password") ?? "");
+
+      if (!email || !password) {
+        setStatus("Email and password are required.");
+        return;
+      }
+
+      setBusy(true);
+      setStatus(
+        pendingAction === "signup" ? "Creating account…" : "Logging in…",
+      );
+
+      try {
+        if (pendingAction === "signup") {
+          const { data: signUpData, error } = await supabase.auth.signUp({
+            email,
+            password,
+          });
+          if (error) throw error;
+
+          if (signUpData.session) {
+            setStatus("Account created. You’re signed in.");
+          } else {
+            setStatus(
+              "Account created. Check your email to confirm before logging in (if confirmations are on).",
+            );
+          }
+        } else {
+          const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (error) throw error;
+          setStatus("Logged in.");
+        }
+
+        form.reset();
+        await refreshSession();
+        window.dispatchEvent(new Event("chase-cards-changed"));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Something went wrong.";
+        setStatus(message);
+      } finally {
+        setBusy(false);
+      }
+    });
+  });
+
+  signOutButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      setBusy(true);
+      setStatus("Logging out…");
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setStatus(error.message);
+        setBusy(false);
+        return;
+      }
+      setStatus("Logged out.");
+      await refreshSession();
+      window.dispatchEvent(new Event("chase-cards-changed"));
+      setBusy(false);
+    });
+  });
+
   document
     .querySelectorAll<HTMLDetailsElement>("header details")
     .forEach((menu) => {
@@ -119,4 +446,22 @@ const navigation = [
         }
       });
     });
+
+  // Close desktop auth popover when clicking outside
+  document.addEventListener("click", (event) => {
+    const target = event.target as Node | null;
+    document
+      .querySelectorAll<HTMLDetailsElement>("nav details.header-auth-guest")
+      .forEach((panel) => {
+        if (panel.open && target && !panel.contains(target)) {
+          panel.open = false;
+        }
+      });
+  });
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    showSession(session?.user.email);
+  });
+
+  void refreshSession();
 </script>

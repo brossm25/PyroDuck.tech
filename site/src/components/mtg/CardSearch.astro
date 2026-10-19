@@ -71,11 +71,13 @@
   </button>
 
   <p class="mt-4 text-sm text-brand-muted">
-    This previews your selection. It isn’t saved to a hunt list yet.
+    Saves to your chase list when you’re signed in.
   </p>
 </dialog>
 
 <script>
+  import { supabase } from "@/lib/supabase";
+
   interface Card {
     id: string;
     name: string;
@@ -236,17 +238,63 @@
     }
   }
 
-  confirmButton?.addEventListener("click", () => {
+ confirmButton?.addEventListener("click", async () => {
     if (!printingSelect || !finishSelect || !status) return;
 
     const card = printings[Number(printingSelect.value)];
-    if (!card || !finishSelect.value) return;
+    const finish = finishSelect.value;
+    if (!card || !finish) return;
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      status.textContent = sessionError.message;
+      return;
+    }
+
+    if (!session) {
+      status.textContent =
+        "Sign in above to save this printing to your chase list.";
+      dialog?.close();
+      return;
+    }
+
+    status.textContent = "Saving to your chase list…";
+    confirmButton.disabled = true;
+
+    const imageUrl = getImage(card) ?? null;
+
+    const { error } = await supabase.from("chase_cards").insert({
+      scryfall_id: card.id,
+      name: card.name,
+      set_name: card.set_name,
+      collector_number: card.collector_number,
+      finish,
+      image_url: imageUrl,
+      scryfall_uri: card.scryfall_uri,
+    });
+
+    confirmButton.disabled = false;
+
+    if (error) {
+      if (error.code === "23505") {
+        status.textContent =
+          `Already on your list: ${card.name} — ${card.set_name} ` +
+          `#${card.collector_number}, ${finishLabel(finish)}.`;
+      } else {
+        status.textContent = error.message;
+      }
+      return;
+    }
 
     status.textContent =
-      `Selected: ${card.name} — ${card.set_name} ` +
-      `#${card.collector_number}, ${finishLabel(finishSelect.value)}. ` +
-      "Not saved yet.";
+      `Saved: ${card.name} — ${card.set_name} ` +
+      `#${card.collector_number}, ${finishLabel(finish)}.`;
 
+    window.dispatchEvent(new Event("chase-cards-changed"));
     dialog?.close();
   });
 

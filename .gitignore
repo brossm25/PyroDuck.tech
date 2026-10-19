@@ -3,3 +3,7 @@
 node_modules
 .astro
 dist
+# env secrets (never commit)
+.env
+.env.*
+!.env.example
