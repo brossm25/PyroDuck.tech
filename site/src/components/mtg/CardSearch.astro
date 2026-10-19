@@ -1,0 +1,452 @@
+<section aria-labelledby="card-search-heading">
+  <h2 id="card-search-heading" class="text-3xl font-bold text-brand-text">
+    Find a card.
+  </h2>
+
+  <form class="card-search-form mt-6 flex flex-col gap-3 sm:flex-row">
+    <div class="min-w-0 flex-1">
+      <label for="card-query" class="sr-only">Card name</label>
+      <input
+        id="card-query"
+        name="query"
+        type="search"
+        required
+        maxlength="100"
+        placeholder="Try Chromatic Lantern"
+        class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-afterdark px-4 py-3 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
+      />
+    </div>
+
+    <button
+      type="submit"
+      class="rounded-lg bg-pyroduck-plasma px-6 py-3 font-semibold text-pyroduck-void hover:bg-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime disabled:opacity-60"
+    >
+      Search
+    </button>
+  </form>
+
+  <p class="search-status mt-4 text-brand-muted" role="status"></p>
+
+  <ul
+    class="search-results mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3 lg:grid-cols-4"
+  >
+  </ul>
+
+  <p class="mt-6 text-sm text-brand-muted">
+    Card information and images provided by{" "}
+    <a
+      href="https://scryfall.com"
+      class="text-pyroduck-plasma underline hover:text-pyroduck-lime"
+    >
+      Scryfall
+    </a>
+  </p>
+</section>
+
+<dialog
+  class="printing-dialog text-brand-text"
+  aria-label="Choose card printing"
+>
+  <form method="dialog" class="printing-controls">
+    <button type="submit" class="printing-button" autofocus>Close ✕</button>
+  </form>
+
+  <h3 class="text-2xl font-bold">Choose your version.</h3>
+  <p class="printing-status mt-3 text-brand-muted" role="status"></p>
+
+  <label class="printing-label">
+    Set and collector number
+    <select class="printing-select" disabled></select>
+  </label>
+
+  <img class="printing-image" alt="" hidden />
+
+  <label class="printing-label">
+    Finish
+    <select class="finish-select" disabled></select>
+  </label>
+
+  <button type="button" class="printing-confirm printing-button" disabled>
+    Use this version
+  </button>
+
+  <p class="mt-4 text-sm text-brand-muted">
+    This previews your selection. It isn’t saved to a hunt list yet.
+  </p>
+</dialog>
+
+<script>
+  interface Card {
+    id: string;
+    name: string;
+    scryfall_uri: string;
+    prints_search_uri: string;
+    set_name: string;
+    collector_number: string;
+    finishes: string[];
+    image_uris?: { normal: string };
+    card_faces?: { image_uris?: { normal: string } }[];
+  }
+
+  interface CardPage {
+    data: Card[];
+    has_more: boolean;
+    next_page?: string;
+  }
+
+  const form = document.querySelector<HTMLFormElement>(".card-search-form");
+  const status = document.querySelector<HTMLElement>(".search-status");
+  const results = document.querySelector<HTMLUListElement>(".search-results");
+  const dialog = document.querySelector<HTMLDialogElement>(".printing-dialog");
+  const printingSelect =
+    document.querySelector<HTMLSelectElement>(".printing-select");
+  const finishSelect =
+    document.querySelector<HTMLSelectElement>(".finish-select");
+  const printingImage =
+    document.querySelector<HTMLImageElement>(".printing-image");
+  const printingStatus =
+    document.querySelector<HTMLElement>(".printing-status");
+  const confirmButton =
+    document.querySelector<HTMLButtonElement>(".printing-confirm");
+
+  let printings: Card[] = [];
+  let pickerRequest: AbortController | undefined;
+
+  function getImage(card: Card) {
+    return card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal;
+  }
+
+  function finishLabel(finish: string) {
+    if (finish === "nonfoil") return "Nonfoil";
+    if (finish === "etched") return "Etched foil";
+    if (finish === "foil") return "Foil";
+    return finish;
+  }
+
+  function updatePrinting() {
+    if (!printingSelect || !finishSelect || !printingImage || !confirmButton)
+      return;
+
+    const card = printings[Number(printingSelect.value)];
+    if (!card) return;
+
+    const imageUrl = getImage(card);
+
+    printingImage.hidden = !imageUrl;
+    if (imageUrl) printingImage.src = imageUrl;
+    printingImage.alt = `${card.name} — ${card.set_name} #${card.collector_number}`;
+
+    finishSelect.replaceChildren();
+
+    for (const finish of card.finishes) {
+      finishSelect.add(new Option(finishLabel(finish), finish));
+    }
+
+    finishSelect.disabled = card.finishes.length === 0;
+    confirmButton.disabled = card.finishes.length === 0;
+  }
+
+  printingSelect?.addEventListener("change", updatePrinting);
+
+  dialog?.addEventListener("close", () => {
+    pickerRequest?.abort();
+  });
+
+  async function openPrintings(card: Card) {
+    if (
+      !dialog ||
+      !printingSelect ||
+      !finishSelect ||
+      !printingImage ||
+      !printingStatus ||
+      !confirmButton
+    )
+      return;
+
+    pickerRequest?.abort();
+    const controller = new AbortController();
+    pickerRequest = controller;
+
+    printings = [];
+    printingSelect.replaceChildren();
+    finishSelect.replaceChildren();
+    printingSelect.disabled = true;
+    finishSelect.disabled = true;
+    printingImage.hidden = true;
+    confirmButton.disabled = true;
+    printingStatus.textContent = `Loading versions of ${card.name}…`;
+
+    if (!dialog.open) dialog.showModal();
+
+    try {
+      const endpoint = new URL(card.prints_search_uri);
+      const query = endpoint.searchParams.get("q") ?? "";
+
+      endpoint.searchParams.set("q", `(${query}) game:paper`);
+      endpoint.searchParams.set("unique", "prints");
+
+      let next: string | undefined = endpoint.href;
+      const loadedPrintings: Card[] = [];
+
+      while (next) {
+        controller.signal.throwIfAborted();
+
+        const response = await fetch(next, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+
+        if (response.status === 404) {
+          printingStatus.textContent = "No paper printings found.";
+          return;
+        }
+
+        if (!response.ok) throw new Error("Printings unavailable");
+
+        const page: CardPage = await response.json();
+        loadedPrintings.push(...page.data);
+        next = page.has_more ? page.next_page : undefined;
+
+        if (next) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+
+      controller.signal.throwIfAborted();
+      printings = loadedPrintings;
+
+      for (const [index, printing] of printings.entries()) {
+        printingSelect.add(
+          new Option(
+            `${printing.set_name} — #${printing.collector_number}`,
+            String(index),
+          ),
+        );
+      }
+
+      printingSelect.disabled = printings.length === 0;
+      printingStatus.textContent = `${printings.length} paper printings. Choose a set to preview its artwork.`;
+
+      updatePrinting();
+    } catch {
+      if (!controller.signal.aborted) {
+        printingStatus.textContent =
+          "Couldn’t load printings. Close and try again.";
+      }
+    }
+  }
+
+  confirmButton?.addEventListener("click", () => {
+    if (!printingSelect || !finishSelect || !status) return;
+
+    const card = printings[Number(printingSelect.value)];
+    if (!card || !finishSelect.value) return;
+
+    status.textContent =
+      `Selected: ${card.name} — ${card.set_name} ` +
+      `#${card.collector_number}, ${finishLabel(finishSelect.value)}. ` +
+      "Not saved yet.";
+
+    dialog?.close();
+  });
+
+  if (form && status && results) {
+    const button = form.querySelector<HTMLButtonElement>("button");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (button?.disabled) return;
+
+      const query = String(new FormData(form).get("query") ?? "").trim();
+      if (!query) return;
+
+      results.replaceChildren();
+      status.textContent = "Searching…";
+      if (button) button.disabled = true;
+
+      try {
+        const endpoint = new URL("https://api.scryfall.com/cards/search");
+        endpoint.searchParams.set("q", query);
+        endpoint.searchParams.set("unique", "cards");
+        endpoint.searchParams.set("order", "name");
+
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json" },
+        });
+
+        if (response.status === 404) {
+          status.textContent = "No cards found. Try another name.";
+          return;
+        }
+
+        if (!response.ok) throw new Error("Search unavailable");
+
+        const data: CardPage = await response.json();
+        const cards = data.data.slice(0, 12);
+
+        for (const card of cards) {
+          const item = document.createElement("li");
+          const link = document.createElement("a");
+
+          link.href = card.scryfall_uri;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.className = "card-result";
+          link.setAttribute(
+            "aria-label",
+            `${card.name} on Scryfall (opens in a new tab)`,
+          );
+
+          const imageUrl = getImage(card);
+
+          if (imageUrl) {
+            const image = document.createElement("img");
+            image.src = imageUrl;
+            image.alt = card.name;
+            image.loading = "lazy";
+            image.width = 488;
+            image.height = 680;
+            link.append(image);
+          }
+
+          const name = document.createElement("span");
+          name.textContent = `${card.name} ↗`;
+          link.append(name);
+
+          const choose = document.createElement("button");
+          choose.type = "button";
+          choose.className = "printing-button";
+          choose.textContent = "Choose printing";
+          choose.setAttribute("aria-haspopup", "dialog");
+          choose.setAttribute("aria-label", `Choose printing for ${card.name}`);
+          choose.addEventListener("click", () => openPrintings(card));
+
+          item.append(link, choose);
+          results.append(item);
+        }
+
+        status.textContent =
+          `Showing ${cards.length} ${cards.length === 1 ? "result" : "results"}. ` +
+          "Use Choose printing to browse artwork and finishes." +
+          (data.has_more || data.data.length > 12
+            ? " Narrow your search for more specific results."
+            : "");
+      } catch {
+        status.textContent = "Search couldn’t load. Please try again shortly.";
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
+  }
+</script>
+
+<style>
+  .search-results :global(.card-result) {
+    display: block;
+    border-radius: 0.75rem;
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+  }
+
+  .search-results :global(.card-result img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+  }
+
+  .search-results :global(.card-result span) {
+    display: block;
+    margin-top: 0.75rem;
+  }
+
+  .search-results :global(.card-result:hover) {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .search-results :global(.card-result:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .printing-dialog {
+    width: min(560px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.5rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  .printing-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .printing-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+
+  .printing-label {
+    display: grid;
+    gap: 0.5rem;
+    margin-block: 1rem;
+    font-weight: 600;
+  }
+
+  .printing-select,
+  .finish-select {
+    width: 100%;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: inherit;
+    font: inherit;
+  }
+
+  .printing-image {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    margin: 1rem auto;
+    border-radius: 0.75rem;
+  }
+
+  .printing-image[hidden] {
+    display: none;
+  }
+
+  :global(.printing-button) {
+    margin-top: 0.75rem;
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  :global(.printing-button:hover) {
+    background: var(--color-pyroduck-lime);
+  }
+
+  :global(.printing-button:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  :global(.printing-button:focus-visible),
+  .printing-select:focus-visible,
+  .finish-select:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+</style>
