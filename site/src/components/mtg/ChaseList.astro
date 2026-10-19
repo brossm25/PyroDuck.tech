@@ -17,7 +17,8 @@
 
   <ul
     class="chase-list-items mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-  ></ul>
+  >
+  </ul>
 </section>
 
 <script>
@@ -82,8 +83,10 @@
 
     removing = true;
     setRemoveButtonsDisabled(true);
-    button.textContent = "Removing…";
+    button.textContent = "…";
     setStatus(`Removing ${card.name}…`);
+
+    let removed = false;
 
     try {
       const {
@@ -114,18 +117,18 @@
         return;
       }
 
+      removed = true;
       await loadChaseList();
-      setStatus(`${card.name} removed from your chase list.`);
-
-      list
-        ?.querySelector<HTMLButtonElement>(".chase-list-remove")
-        ?.focus();
     } catch {
       setStatus("Couldn’t remove the card. Please try again shortly.");
     } finally {
       removing = false;
-      button.textContent = "Remove";
+      button.textContent = "×";
       setRemoveButtonsDisabled(false);
+
+      if (removed) {
+        list?.querySelector<HTMLButtonElement>(".chase-list-remove")?.focus();
+      }
     }
   }
 
@@ -185,13 +188,12 @@
 
       const rawPrice = card.price_usd;
       const parsedPrice =
-        rawPrice !== null && String(rawPrice).trim() !== ""
+        rawPrice != null && String(rawPrice).trim() !== ""
           ? Number(rawPrice)
           : NaN;
 
       if (Number.isFinite(parsedPrice) && parsedPrice >= 0) {
-        price.textContent =
-          `Price when saved: ${usdFormatter.format(parsedPrice)} USD`;
+        price.textContent = `Price when saved: ${usdFormatter.format(parsedPrice)} USD`;
       } else {
         price.textContent = card.price_checked_at
           ? "Price unavailable when saved."
@@ -227,8 +229,9 @@
       const removeButton = document.createElement("button");
       removeButton.type = "button";
       removeButton.className = "chase-list-remove";
-      removeButton.textContent = "Remove";
+      removeButton.textContent = "×";
       removeButton.disabled = removing;
+      removeButton.title = `Remove ${card.name}`;
       removeButton.setAttribute(
         "aria-label",
         `Remove ${card.name}, ${card.set_name} #${card.collector_number}, ${finishLabel(card.finish)} from your chase list`,
@@ -310,6 +313,7 @@
 
 <style>
   .chase-list-items :global(.chase-list-card) {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -370,37 +374,50 @@
   }
 
   .chase-list-items :global(.chase-list-actions) {
-    margin-top: auto;
-    padding-top: 0.5rem;
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    z-index: 1;
   }
 
   .chase-list-items :global(.chase-list-remove) {
-    min-height: 44px;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--color-pyroduck-plasma);
-    border-radius: 0.5rem;
-    background: transparent;
-    color: var(--color-pyroduck-plasma);
+    box-sizing: border-box;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 2px solid var(--color-pyroduck-void);
+    border-radius: 50%;
+    background: #b91c1c;
+    color: #fff;
     font: inherit;
+    font-size: 1.25rem;
     font-weight: 600;
+    line-height: 1;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 50%);
     cursor: pointer;
-    transition:
-      background-color 180ms ease,
-      color 180ms ease;
+  }
+
+  .chase-list-items :global(.chase-list-remove::before) {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
   }
 
   .chase-list-items :global(.chase-list-remove:hover:not(:disabled)) {
-    background: var(--color-pyroduck-plasma);
-    color: var(--color-pyroduck-void);
+    background: #991b1b;
   }
 
   .chase-list-items :global(.chase-list-remove:focus-visible) {
     outline: 2px solid var(--color-pyroduck-lime);
-    outline-offset: 4px;
+    outline-offset: 3px;
   }
 
   .chase-list-items :global(.chase-list-remove:disabled) {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: wait;
   }
 </style>
