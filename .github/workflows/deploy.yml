@@ -24,6 +24,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Public anon keys only — still required at Astro build so client bundles get real values.
+      # Set repo secrets: PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY
+      - name: Write public Astro env for build
+        env:
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$PUBLIC_SUPABASE_URL" ] || [ -z "$PUBLIC_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "Missing PUBLIC_SUPABASE_URL or PUBLIC_SUPABASE_PUBLISHABLE_KEY repo secrets."
+            exit 1
+          fi
+          printf 'PUBLIC_SUPABASE_URL=%s\nPUBLIC_SUPABASE_PUBLISHABLE_KEY=%s\n' \
+            "$PUBLIC_SUPABASE_URL" \
+            "$PUBLIC_SUPABASE_PUBLISHABLE_KEY" > site/.env
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v16
 
