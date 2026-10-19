@@ -29,11 +29,10 @@
 
   <ul
     class="search-results mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3 lg:grid-cols-4"
-  >
-  </ul>
+  ></ul>
 
   <p class="mt-6 text-sm text-brand-muted">
-    Card information and images provided by{" "}
+    Card information, images, and price estimates provided by{" "}
     <a
       href="https://scryfall.com"
       class="text-pyroduck-plasma underline hover:text-pyroduck-lime"
@@ -66,12 +65,16 @@
     <select class="finish-select" disabled></select>
   </label>
 
+  <p class="printing-price text-brand-muted" role="status"></p>
+
   <button type="button" class="printing-confirm printing-button" disabled>
     Use this version
   </button>
 
   <p class="mt-4 text-sm text-brand-muted">
-    Saves to your chase list when you’re signed in.
+    Saves this printing, finish, and available USD price estimate to your
+    chase list when you’re signed in. The saved price does not update
+    automatically.
   </p>
 </dialog>
 
@@ -86,6 +89,11 @@
     set_name: string;
     collector_number: string;
     finishes: string[];
+    prices?: {
+      usd: string | null;
+      usd_foil: string | null;
+      usd_etched: string | null;
+    };
     image_uris?: { normal: string };
     card_faces?: { image_uris?: { normal: string } }[];
   }
@@ -108,11 +116,20 @@
     document.querySelector<HTMLImageElement>(".printing-image");
   const printingStatus =
     document.querySelector<HTMLElement>(".printing-status");
+  const printingPrice =
+    document.querySelector<HTMLElement>(".printing-price");
   const confirmButton =
     document.querySelector<HTMLButtonElement>(".printing-confirm");
 
+  const usdFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+
   let printings: Card[] = [];
   let pickerRequest: AbortController | undefined;
+  let saving = false;
+  let printingsCheckedAt: string | null = null;
 
   function getImage(card: Card) {
     return card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal;
@@ -123,6 +140,39 @@
     if (finish === "etched") return "Etched foil";
     if (finish === "foil") return "Foil";
     return finish;
+  }
+
+  function getPrice(card: Card, finish: string): number | null {
+    const rawPrice =
+      finish === "foil"
+        ? card.prices?.usd_foil
+        : finish === "etched"
+          ? card.prices?.usd_etched
+          : finish === "nonfoil"
+            ? card.prices?.usd
+            : null;
+
+    if (rawPrice == null || rawPrice.trim() === "") return null;
+
+    const price = Number(rawPrice);
+    return Number.isFinite(price) && price >= 0 ? price : null;
+  }
+
+  function updatePrice() {
+    if (!printingSelect || !finishSelect || !printingPrice) return;
+
+    const card = printings[Number(printingSelect.value)];
+    if (!card) {
+      printingPrice.textContent = "";
+      return;
+    }
+
+    const price = getPrice(card, finishSelect.value);
+
+    printingPrice.textContent =
+      price === null
+        ? "No USD price available for this printing and finish."
+        : `Scryfall estimate: ${usdFormatter.format(price)} USD`;
   }
 
   function updatePrinting() {
@@ -144,11 +194,14 @@
       finishSelect.add(new Option(finishLabel(finish), finish));
     }
 
-    finishSelect.disabled = card.finishes.length === 0;
-    confirmButton.disabled = card.finishes.length === 0;
+    finishSelect.disabled = saving || card.finishes.length === 0;
+    confirmButton.disabled = saving || card.finishes.length === 0;
+
+    updatePrice();
   }
 
   printingSelect?.addEventListener("change", updatePrinting);
+  finishSelect?.addEventListener("change", updatePrice);
 
   dialog?.addEventListener("close", () => {
     pickerRequest?.abort();
@@ -156,20 +209,23 @@
 
   async function openPrintings(card: Card) {
     if (
+      saving ||
       !dialog ||
       !printingSelect ||
       !finishSelect ||
       !printingImage ||
       !printingStatus ||
       !confirmButton
-    )
+    ) {
       return;
+    }
 
     pickerRequest?.abort();
     const controller = new AbortController();
     pickerRequest = controller;
 
     printings = [];
+    printingsCheckedAt = null;
     printingSelect.replaceChildren();
     finishSelect.replaceChildren();
     printingSelect.disabled = true;
@@ -177,6 +233,7 @@
     printingImage.hidden = true;
     confirmButton.disabled = true;
     printingStatus.textContent = `Loading versions of ${card.name}…`;
+    if (printingPrice) printingPrice.textContent = "";
 
     if (!dialog.open) dialog.showModal();
 
@@ -216,6 +273,7 @@
 
       controller.signal.throwIfAborted();
       printings = loadedPrintings;
+      printingsCheckedAt = new Date().toISOString();
 
       for (const [index, printing] of printings.entries()) {
         printingSelect.add(
@@ -227,7 +285,9 @@
       }
 
       printingSelect.disabled = printings.length === 0;
-      printingStatus.textContent = `${printings.length} paper printings. Choose a set to preview its artwork.`;
+      printingStatus.textContent =
+        `${printings.length} paper printings. ` +
+        "Choose a set to preview its artwork.";
 
       updatePrinting();
     } catch {
@@ -238,64 +298,92 @@
     }
   }
 
- confirmButton?.addEventListener("click", async () => {
-    if (!printingSelect || !finishSelect || !status) return;
+  confirmButton?.addEventListener("click", async () => {
+    if (
+      saving ||
+      !printingSelect ||
+      !finishSelect ||
+      !confirmButton ||
+      !status
+    ) {
+      return;
+    }
 
     const card = printings[Number(printingSelect.value)];
     const finish = finishSelect.value;
-    if (!card || !finish) return;
+    if (!card || !card.finishes.includes(finish)) return;
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError) {
-      status.textContent = sessionError.message;
-      return;
-    }
-
-    if (!session) {
-      status.textContent =
-        "Sign in above to save this printing to your chase list.";
-      dialog?.close();
-      return;
-    }
-
-    status.textContent = "Saving to your chase list…";
+    saving = true;
     confirmButton.disabled = true;
+    printingSelect.disabled = true;
+    finishSelect.disabled = true;
 
-    const imageUrl = getImage(card) ?? null;
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-    const { error } = await supabase.from("chase_cards").insert({
-      scryfall_id: card.id,
-      name: card.name,
-      set_name: card.set_name,
-      collector_number: card.collector_number,
-      finish,
-      image_url: imageUrl,
-      scryfall_uri: card.scryfall_uri,
-    });
+      if (sessionError) throw sessionError;
 
-    confirmButton.disabled = false;
-
-    if (error) {
-      if (error.code === "23505") {
+      if (!session) {
         status.textContent =
-          `Already on your list: ${card.name} — ${card.set_name} ` +
-          `#${card.collector_number}, ${finishLabel(finish)}.`;
-      } else {
-        status.textContent = error.message;
+          "Sign in above to save this printing to your chase list.";
+        dialog?.close();
+        return;
       }
-      return;
+
+      status.textContent = "Saving to your chase list…";
+      if (printingStatus) {
+        printingStatus.textContent = "Saving to your chase list…";
+      }
+
+      const { error } = await supabase.from("chase_cards").insert({
+        scryfall_id: card.id,
+        name: card.name,
+        set_name: card.set_name,
+        collector_number: card.collector_number,
+        finish,
+        image_url: getImage(card) ?? null,
+        scryfall_uri: card.scryfall_uri,
+        price_usd: getPrice(card, finish),
+        price_checked_at: printingsCheckedAt,
+      });
+
+      if (error) {
+        if (error.code === "23505") {
+          const message =
+            `Already on your list: ${card.name} — ${card.set_name} ` +
+            `#${card.collector_number}, ${finishLabel(finish)}.`;
+
+          status.textContent = message;
+          if (printingStatus) printingStatus.textContent = message;
+          return;
+        }
+
+        throw error;
+      }
+
+      status.textContent =
+        `Saved: ${card.name} — ${card.set_name} ` +
+        `#${card.collector_number}, ${finishLabel(finish)}.`;
+
+      window.dispatchEvent(new Event("chase-cards-changed"));
+      dialog?.close();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Couldn’t save this card. Please try again.";
+
+      status.textContent = message;
+      if (printingStatus) printingStatus.textContent = message;
+    } finally {
+      saving = false;
+      printingSelect.disabled = printings.length === 0;
+      finishSelect.disabled = card.finishes.length === 0;
+      confirmButton.disabled = card.finishes.length === 0;
     }
-
-    status.textContent =
-      `Saved: ${card.name} — ${card.set_name} ` +
-      `#${card.collector_number}, ${finishLabel(finish)}.`;
-
-    window.dispatchEvent(new Event("chase-cards-changed"));
-    dialog?.close();
   });
 
   if (form && status && results) {

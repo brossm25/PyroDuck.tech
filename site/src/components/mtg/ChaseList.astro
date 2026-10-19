@@ -31,12 +31,26 @@
     finish: string;
     image_url: string | null;
     scryfall_uri: string | null;
+    price_usd: number | string | null;
+    price_checked_at: string | null;
   }
 
   const status = document.querySelector<HTMLElement>(".chase-list-status");
   const list = document.querySelector<HTMLUListElement>(".chase-list-items");
-  const section = document.querySelector<HTMLElement>("#chase-list-heading")
-    ?.closest("section");
+
+  const usdFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  let loadId = 0;
+  let removing = false;
 
   function finishLabel(finish: string) {
     if (finish === "nonfoil") return "Nonfoil";
@@ -49,15 +63,75 @@
     if (status) status.textContent = message;
   }
 
-  function renderEmptySignedOut() {
-    if (!list) return;
-    list.replaceChildren();
-    setStatus("Sign in above to see your saved chase cards.");
-    section?.classList.remove("hidden");
+  function setRemoveButtonsDisabled(disabled: boolean) {
+    list
+      ?.querySelectorAll<HTMLButtonElement>(".chase-list-remove")
+      .forEach((button) => {
+        button.disabled = disabled;
+      });
+  }
+
+  async function removeCard(card: ChaseCard, button: HTMLButtonElement) {
+    if (removing) return;
+
+    const confirmed = window.confirm(
+      `Remove ${card.name} — ${card.set_name} #${card.collector_number} (${finishLabel(card.finish)}) from your chase list?`,
+    );
+
+    if (!confirmed) return;
+
+    removing = true;
+    setRemoveButtonsDisabled(true);
+    button.textContent = "Removing…";
+    setStatus(`Removing ${card.name}…`);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        setStatus("Please sign in again before removing a card.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("chase_cards")
+        .delete()
+        .eq("id", card.id)
+        .select("id");
+
+      if (error) {
+        setStatus(`Couldn’t remove the card: ${error.message}`);
+        return;
+      }
+
+      if (!data?.length) {
+        setStatus(
+          "The card wasn’t removed. It may already be gone, or your account may not have permission to delete it.",
+        );
+        return;
+      }
+
+      await loadChaseList();
+      setStatus(`${card.name} removed from your chase list.`);
+
+      list
+        ?.querySelector<HTMLButtonElement>(".chase-list-remove")
+        ?.focus();
+    } catch {
+      setStatus("Couldn’t remove the card. Please try again shortly.");
+    } finally {
+      removing = false;
+      button.textContent = "Remove";
+      setRemoveButtonsDisabled(false);
+    }
   }
 
   function renderCards(cards: ChaseCard[]) {
     if (!list) return;
+
     list.replaceChildren();
 
     if (cards.length === 0) {
@@ -85,6 +159,7 @@
 
       const title = document.createElement("p");
       title.className = "chase-list-title";
+
       if (card.scryfall_uri) {
         const link = document.createElement("a");
         link.href = card.scryfall_uri;
@@ -95,13 +170,76 @@
       } else {
         title.textContent = card.name;
       }
+
       item.append(title);
 
       const meta = document.createElement("p");
       meta.className = "chase-list-meta";
-      meta.textContent = `${card.set_name} #${card.collector_number} · ${finishLabel(card.finish)}`;
+      meta.textContent =
+        `${card.set_name} #${card.collector_number} · ` +
+        finishLabel(card.finish);
       item.append(meta);
 
+      const price = document.createElement("p");
+      price.className = "chase-list-price";
+
+      const rawPrice = card.price_usd;
+      const parsedPrice =
+        rawPrice !== null && String(rawPrice).trim() !== ""
+          ? Number(rawPrice)
+          : NaN;
+
+      if (Number.isFinite(parsedPrice) && parsedPrice >= 0) {
+        price.textContent =
+          `Price when saved: ${usdFormatter.format(parsedPrice)} USD`;
+      } else {
+        price.textContent = card.price_checked_at
+          ? "Price unavailable when saved."
+          : "No price recorded.";
+      }
+
+      item.append(price);
+
+      if (card.price_checked_at) {
+        const checkedDate = new Date(card.price_checked_at);
+
+        if (!Number.isNaN(checkedDate.getTime())) {
+          const note = document.createElement("p");
+          note.className = "chase-list-note";
+
+          const time = document.createElement("time");
+          time.dateTime = card.price_checked_at;
+          time.textContent = dateFormatter.format(checkedDate);
+
+          note.append(
+            "Scryfall estimate checked ",
+            time,
+            ". Does not update automatically.",
+          );
+
+          item.append(note);
+        }
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "chase-list-actions";
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "chase-list-remove";
+      removeButton.textContent = "Remove";
+      removeButton.disabled = removing;
+      removeButton.setAttribute(
+        "aria-label",
+        `Remove ${card.name}, ${card.set_name} #${card.collector_number}, ${finishLabel(card.finish)} from your chase list`,
+      );
+
+      removeButton.addEventListener("click", () => {
+        void removeCard(card, removeButton);
+      });
+
+      actions.append(removeButton);
+      item.append(actions);
       list.append(item);
     }
   }
@@ -109,42 +247,58 @@
   async function loadChaseList() {
     if (!list) return;
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+    const currentLoad = ++loadId;
 
-    if (sessionError) {
-      setStatus(sessionError.message);
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentLoad !== loadId) return;
+
+      if (sessionError) {
+        list.replaceChildren();
+        setStatus("Couldn’t check your sign-in. Please try again.");
+        return;
+      }
+
+      if (!session) {
+        list.replaceChildren();
+        setStatus("Sign in above to see your saved chase cards.");
+        return;
+      }
+
+      setStatus("Loading your chase list…");
+
+      const { data, error } = await supabase
+        .from("chase_cards")
+        .select(
+          "id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at",
+        )
+        .order("created_at", { ascending: false });
+
+      if (currentLoad !== loadId) return;
+
+      if (error) {
+        list.replaceChildren();
+        setStatus(`Couldn’t load your chase list: ${error.message}`);
+        return;
+      }
+
+      renderCards((data ?? []) as ChaseCard[]);
+    } catch {
+      if (currentLoad !== loadId) return;
+
       list.replaceChildren();
-      return;
+      setStatus("Couldn’t load your chase list. Please try again shortly.");
     }
-
-    if (!session) {
-      renderEmptySignedOut();
-      return;
-    }
-
-    setStatus("Loading your chase list…");
-
-    const { data, error } = await supabase
-      .from("chase_cards")
-      .select(
-        "id, name, set_name, collector_number, finish, image_url, scryfall_uri",
-      )
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setStatus(error.message);
-      list.replaceChildren();
-      return;
-    }
-
-    renderCards((data ?? []) as ChaseCard[]);
   }
 
   supabase.auth.onAuthStateChange(() => {
-    void loadChaseList();
+    window.setTimeout(() => {
+      void loadChaseList();
+    }, 0);
   });
 
   window.addEventListener("chase-cards-changed", () => {
@@ -155,10 +309,11 @@
 </script>
 
 <style>
-  .chase-list-card {
+  .chase-list-items :global(.chase-list-card) {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    min-width: 0;
     border-radius: 1rem;
     border: 1px solid
       color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
@@ -166,30 +321,86 @@
     padding: 0.75rem;
   }
 
-  .chase-list-card img {
+  .chase-list-items :global(.chase-list-card img) {
+    display: block;
     width: 100%;
     height: auto;
     border-radius: 0.75rem;
   }
 
-  .chase-list-title {
+  .chase-list-items :global(.chase-list-title) {
     margin: 0;
     font-weight: 600;
     color: var(--color-brand-text);
   }
 
-  .chase-list-title a {
+  .chase-list-items :global(.chase-list-title a) {
     color: var(--color-pyroduck-plasma);
     text-decoration: underline;
+    text-underline-offset: 3px;
+    border-radius: 0.25rem;
   }
 
-  .chase-list-title a:hover {
+  .chase-list-items :global(.chase-list-title a:hover) {
     color: var(--color-pyroduck-lime);
   }
 
-  .chase-list-meta {
+  .chase-list-items :global(.chase-list-title a:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .chase-list-items :global(.chase-list-meta) {
     margin: 0;
     font-size: 0.875rem;
     color: var(--color-brand-muted);
+  }
+
+  .chase-list-items :global(.chase-list-price) {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-pyroduck-lime);
+  }
+
+  .chase-list-items :global(.chase-list-note) {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--color-brand-muted);
+  }
+
+  .chase-list-items :global(.chase-list-actions) {
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+
+  .chase-list-items :global(.chase-list-remove) {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .chase-list-items :global(.chase-list-remove:hover:not(:disabled)) {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .chase-list-items :global(.chase-list-remove:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .chase-list-items :global(.chase-list-remove:disabled) {
+    opacity: 0.5;
+    cursor: wait;
   }
 </style>
