@@ -2,23 +2,42 @@
   aria-labelledby="chase-list-heading"
   class="rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
 >
-  <h2
-    id="chase-list-heading"
-    class="text-2xl font-bold text-brand-text sm:text-3xl"
-  >
-    Your chase list.
-  </h2>
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h2
+      id="chase-list-heading"
+      tabindex="-1"
+      class="text-2xl font-bold text-brand-text sm:text-3xl"
+    >
+      Your chase list.
+    </h2>
+
+    <button
+      type="button"
+      class="chase-refresh"
+      disabled
+    >
+      Refresh prices
+    </button>
+  </div>
 
   <p class="mt-3 max-w-2xl text-brand-muted">
-    Printings you’ve saved while signed in. Add more with Find a card below.
+    Your saved printings and finishes. Price estimates refresh when you open
+    this list if their last check was more than 24 hours ago.
   </p>
 
   <p class="chase-list-status mt-4 text-brand-muted" role="status"></p>
 
+  <p
+    class="chase-list-total mt-3 text-xl font-bold text-pyroduck-lime"
+  ></p>
+
+  <p class="chase-list-total-note mt-2 text-sm text-brand-muted"></p>
+
+  <p class="chase-price-status mt-3 text-sm text-brand-muted" role="status"></p>
+
   <ul
     class="chase-list-items mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-  >
-  </ul>
+  ></ul>
 </section>
 
 <script>
@@ -26,6 +45,7 @@
 
   interface ChaseCard {
     id: string;
+    scryfall_id: string;
     name: string;
     set_name: string;
     collector_number: string;
@@ -34,10 +54,29 @@
     scryfall_uri: string | null;
     price_usd: number | string | null;
     price_checked_at: string | null;
+    current_price_usd: number | string | null;
+    current_price_checked_at: string | null;
   }
 
-  const status = document.querySelector<HTMLElement>(".chase-list-status");
+  interface ScryfallCard {
+    id: string;
+    prices?: {
+      usd?: string | null;
+      usd_foil?: string | null;
+      usd_etched?: string | null;
+    };
+  }
+
   const list = document.querySelector<HTMLUListElement>(".chase-list-items");
+  const status = document.querySelector<HTMLElement>(".chase-list-status");
+  const priceStatus =
+    document.querySelector<HTMLElement>(".chase-price-status");
+  const totalElement =
+    document.querySelector<HTMLElement>(".chase-list-total");
+  const totalNote =
+    document.querySelector<HTMLElement>(".chase-list-total-note");
+  const refreshButton =
+    document.querySelector<HTMLButtonElement>(".chase-refresh");
 
   const usdFormatter = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -48,102 +87,179 @@
     year: "numeric",
     month: "short",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 
-  let loadId = 0;
+  const refreshAge = 24 * 60 * 60 * 1000;
+
+  let cards: ChaseCard[] = [];
+  let loading = false;
+  let refreshing = false;
   let removing = false;
+  let signedIn = false;
+  let requestId = 0;
+  let refreshController: AbortController | undefined;
 
   function finishLabel(finish: string) {
     if (finish === "nonfoil") return "Nonfoil";
-    if (finish === "etched") return "Etched foil";
     if (finish === "foil") return "Foil";
+    if (finish === "etched") return "Etched foil";
     return finish;
+  }
+
+  function parsePrice(value: number | string | null | undefined) {
+    if (value == null || String(value).trim() === "") return null;
+
+    const price = Number(value);
+    return Number.isFinite(price) && price >= 0 ? price : null;
+  }
+
+  function priceForFinish(card: ScryfallCard, finish: string) {
+    if (finish === "nonfoil") return parsePrice(card.prices?.usd);
+    if (finish === "foil") return parsePrice(card.prices?.usd_foil);
+    if (finish === "etched") return parsePrice(card.prices?.usd_etched);
+    return null;
+  }
+
+  function needsRefresh(card: ChaseCard) {
+    if (!card.current_price_checked_at) return true;
+
+    const checked = Date.parse(card.current_price_checked_at);
+
+    return (
+      !Number.isFinite(checked) ||
+      checked > Date.now() ||
+      Date.now() - checked >= refreshAge
+    );
+  }
+
+  function displayedPrice(card: ChaseCard) {
+    // A completed current check can legitimately have no available price.
+    if (card.current_price_checked_at) {
+      return parsePrice(card.current_price_usd);
+    }
+
+    return parsePrice(card.price_usd);
   }
 
   function setStatus(message: string) {
     if (status) status.textContent = message;
   }
 
-  function setRemoveButtonsDisabled(disabled: boolean) {
+  function setPriceStatus(message: string) {
+    if (priceStatus) priceStatus.textContent = message;
+  }
+
+  function syncButtons() {
+    const busy = loading || refreshing || removing;
+
+    if (refreshButton) {
+      refreshButton.disabled = busy || !signedIn || cards.length === 0;
+      refreshButton.textContent = refreshing
+        ? "Refreshing…"
+        : "Refresh prices";
+    }
+
     list
       ?.querySelectorAll<HTMLButtonElement>(".chase-list-remove")
       .forEach((button) => {
-        button.disabled = disabled;
+        button.disabled = busy;
       });
   }
 
-  async function removeCard(card: ChaseCard, button: HTMLButtonElement) {
-    if (removing) return;
-
-    const confirmed = window.confirm(
-      `Remove ${card.name} — ${card.set_name} #${card.collector_number} (${finishLabel(card.finish)}) from your chase list?`,
-    );
-
-    if (!confirmed) return;
-
-    removing = true;
-    setRemoveButtonsDisabled(true);
-    button.textContent = "…";
-    setStatus(`Removing ${card.name}…`);
-
-    let removed = false;
-
-    try {
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        setStatus("Please sign in again before removing a card.");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("chase_cards")
-        .delete()
-        .eq("id", card.id)
-        .select("id");
-
-      if (error) {
-        setStatus(`Couldn’t remove the card: ${error.message}`);
-        return;
-      }
-
-      if (!data?.length) {
-        setStatus(
-          "The card wasn’t removed. It may already be gone, or your account may not have permission to delete it.",
-        );
-        return;
-      }
-
-      removed = true;
-      await loadChaseList();
-    } catch {
-      setStatus("Couldn’t remove the card. Please try again shortly.");
-    } finally {
-      removing = false;
-      button.textContent = "×";
-      setRemoveButtonsDisabled(false);
-
-      if (removed) {
-        list?.querySelector<HTMLButtonElement>(".chase-list-remove")?.focus();
-      }
-    }
+  function clearTotal() {
+    if (totalElement) totalElement.textContent = "";
+    if (totalNote) totalNote.textContent = "";
   }
 
-  function renderCards(cards: ChaseCard[]) {
+  function renderTotal() {
+    clearTotal();
+    if (cards.length === 0) return;
+
+    let totalCents = 0;
+    let missing = 0;
+    let savedFallbacks = 0;
+    let stale = 0;
+
+    for (const card of cards) {
+      const price = displayedPrice(card);
+
+      if (price === null) {
+        missing++;
+        continue;
+      }
+
+      totalCents += Math.round(price * 100);
+
+      if (!card.current_price_checked_at) {
+        savedFallbacks++;
+      } else if (needsRefresh(card)) {
+        stale++;
+      }
+    }
+
+    if (totalElement) {
+      totalElement.textContent =
+        missing === cards.length
+          ? "Total chase-list estimate: unavailable"
+          : `Total chase-list estimate: ${
+              usdFormatter.format(totalCents / 100)
+            } USD`;
+    }
+
+    const notes = ["One copy per saved entry."];
+
+    if (savedFallbacks > 0) {
+      notes.push(
+        `${savedFallbacks} ${
+          savedFallbacks === 1 ? "entry uses its" : "entries use their"
+        } original saved price until refreshed.`,
+      );
+    }
+
+    if (stale > 0) {
+      notes.push(
+        `${stale} ${stale === 1 ? "estimate is" : "estimates are"} over 24 hours old.`,
+      );
+    }
+
+    if (missing > 0) {
+      notes.push(
+        `${missing} ${
+          missing === 1 ? "entry has" : "entries have"
+        } no available price and ${
+          missing === 1 ? "is" : "are"
+        } excluded.`,
+      );
+    }
+
+    notes.push("Estimates exclude shipping and tax.");
+
+    if (totalNote) totalNote.textContent = notes.join(" ");
+  }
+
+  function addText(
+    parent: HTMLElement,
+    className: string,
+    text: string,
+  ) {
+    const paragraph = document.createElement("p");
+    paragraph.className = className;
+    paragraph.textContent = text;
+    parent.append(paragraph);
+  }
+
+  function renderCards() {
     if (!list) return;
 
     list.replaceChildren();
-
-    if (cards.length === 0) {
-      setStatus("No cards saved yet. Use Find a card and “Use this version”.");
-      return;
-    }
+    renderTotal();
 
     setStatus(
-      `${cards.length} saved ${cards.length === 1 ? "card" : "cards"}.`,
+      cards.length === 0
+        ? "No cards saved yet. Use Find a card and “Use this version”."
+        : `${cards.length} saved ${cards.length === 1 ? "card" : "cards"}.`,
     );
 
     for (const card of cards) {
@@ -176,48 +292,84 @@
 
       item.append(title);
 
-      const meta = document.createElement("p");
-      meta.className = "chase-list-meta";
-      meta.textContent =
-        `${card.set_name} #${card.collector_number} · ` +
-        finishLabel(card.finish);
-      item.append(meta);
+      addText(
+        item,
+        "chase-list-meta",
+        `${card.set_name} #${card.collector_number} · ${finishLabel(card.finish)}`,
+      );
 
-      const price = document.createElement("p");
-      price.className = "chase-list-price";
+      const current = parsePrice(card.current_price_usd);
+      const original = parsePrice(card.price_usd);
 
-      const rawPrice = card.price_usd;
-      const parsedPrice =
-        rawPrice != null && String(rawPrice).trim() !== ""
-          ? Number(rawPrice)
-          : NaN;
-
-      if (Number.isFinite(parsedPrice) && parsedPrice >= 0) {
-        price.textContent = `Price when saved: ${usdFormatter.format(parsedPrice)} USD`;
+      if (card.current_price_checked_at) {
+        addText(
+          item,
+          "chase-list-price",
+          current === null
+            ? "Current estimate: unavailable"
+            : `Current estimate: ${usdFormatter.format(current)} USD`,
+        );
       } else {
-        price.textContent = card.price_checked_at
-          ? "Price unavailable when saved."
-          : "No price recorded.";
+        addText(
+          item,
+          "chase-list-price",
+          original === null
+            ? "Current estimate: not checked yet"
+            : `Last saved estimate: ${usdFormatter.format(original)} USD`,
+        );
       }
 
-      item.append(price);
+      addText(
+        item,
+        "chase-list-meta",
+        original === null
+          ? "No original price recorded."
+          : `Price when saved: ${usdFormatter.format(original)} USD`,
+      );
 
-      if (card.price_checked_at) {
-        const checkedDate = new Date(card.price_checked_at);
+      if (
+        card.current_price_checked_at &&
+        current !== null &&
+        original !== null
+      ) {
+        const differenceCents =
+          Math.round(current * 100) - Math.round(original * 100);
 
-        if (!Number.isNaN(checkedDate.getTime())) {
+        const change =
+          differenceCents === 0
+            ? "Unchanged since saved."
+            : `${differenceCents > 0 ? "Up" : "Down"} ${
+                usdFormatter.format(Math.abs(differenceCents) / 100)
+              } since saved.`;
+
+        addText(item, "chase-list-change", change);
+      }
+
+      const checkedAt =
+        card.current_price_checked_at ?? card.price_checked_at;
+
+      if (checkedAt) {
+        const date = new Date(checkedAt);
+
+        if (!Number.isNaN(date.getTime())) {
           const note = document.createElement("p");
           note.className = "chase-list-note";
 
           const time = document.createElement("time");
-          time.dateTime = card.price_checked_at;
-          time.textContent = dateFormatter.format(checkedDate);
+          time.dateTime = checkedAt;
+          time.textContent = dateFormatter.format(date);
 
           note.append(
-            "Scryfall estimate checked ",
+            card.current_price_checked_at
+              ? "Scryfall checked "
+              : "Original estimate checked ",
             time,
-            ". Does not update automatically.",
+            ".",
           );
+
+          if (card.current_price_checked_at && needsRefresh(card)) {
+            note.append(" Refresh due.");
+          }
 
           item.append(note);
         }
@@ -226,31 +378,182 @@
       const actions = document.createElement("div");
       actions.className = "chase-list-actions";
 
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "chase-list-remove";
-      removeButton.textContent = "×";
-      removeButton.disabled = removing;
-      removeButton.title = `Remove ${card.name}`;
-      removeButton.setAttribute(
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chase-list-remove";
+      button.textContent = "×";
+      button.title = `Remove ${card.name}`;
+      button.setAttribute(
         "aria-label",
         `Remove ${card.name}, ${card.set_name} #${card.collector_number}, ${finishLabel(card.finish)} from your chase list`,
       );
 
-      removeButton.addEventListener("click", () => {
-        void removeCard(card, removeButton);
+      button.addEventListener("click", () => {
+        void removeCard(card, button);
       });
 
-      actions.append(removeButton);
+      actions.append(button);
       item.append(actions);
       list.append(item);
     }
+
+    syncButtons();
   }
 
-  async function loadChaseList() {
-    if (!list) return;
+  async function refreshPrices(force = false) {
+    if (!signedIn || loading || refreshing || removing) return;
 
-    const currentLoad = ++loadId;
+    const pending = cards.filter((card) => force || needsRefresh(card));
+    if (pending.length === 0) return;
+
+    const activeRequest = requestId;
+    const controller = new AbortController();
+    refreshController = controller;
+    refreshing = true;
+    syncButtons();
+
+    let updated = 0;
+    let failed = 0;
+    let lastError = "";
+
+    try {
+      for (const [index, card] of pending.entries()) {
+        if (controller.signal.aborted || activeRequest !== requestId) return;
+
+        setPriceStatus(
+          `Checking prices ${index + 1} of ${pending.length}…`,
+        );
+
+        // Space requests instead of fetching every card at once.
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+
+        if (controller.signal.aborted || activeRequest !== requestId) return;
+
+        let stop = false;
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+
+        try {
+          if (!card.scryfall_id) {
+            throw new Error("A saved card is missing its Scryfall printing ID.");
+          }
+
+          const response = await fetch(
+            `https://api.scryfall.com/cards/${encodeURIComponent(card.scryfall_id)}`,
+            {
+              headers: { Accept: "application/json" },
+              signal: controller.signal,
+            },
+          );
+
+          if (response.status === 429) {
+            stop = true;
+            throw new Error("Scryfall is busy. Please try refreshing later.");
+          }
+
+          if (!response.ok) {
+            throw new Error("A printing’s price could not be retrieved.");
+          }
+
+          const printing: ScryfallCard = await response.json();
+
+          if (printing.id !== card.scryfall_id) {
+            throw new Error("The returned printing did not match.");
+          }
+
+          if (controller.signal.aborted || activeRequest !== requestId) return;
+
+          const price = priceForFinish(printing, card.finish);
+
+          // Keep an existing estimate if Scryfall temporarily has no price.
+          if (price === null && displayedPrice(card) !== null) {
+            throw new Error(
+              "Some prices are unavailable. Their previous estimates were kept.",
+            );
+          }
+
+          const checkedAt = new Date().toISOString();
+
+          const { data, error } = await supabase
+            .from("chase_cards")
+            .update({
+              current_price_usd: price,
+              current_price_checked_at: checkedAt,
+            })
+            .eq("id", card.id)
+            .select("id");
+
+          if (controller.signal.aborted || activeRequest !== requestId) return;
+
+          if (error) {
+            stop = true;
+            throw new Error(`Couldn’t save refreshed prices: ${error.message}`);
+          }
+
+          if (!data?.length) {
+            stop = true;
+            throw new Error(
+              "Price updates were not saved. Check your chase_cards UPDATE permission.",
+            );
+          }
+
+          card.current_price_usd = price;
+          card.current_price_checked_at = checkedAt;
+          updated++;
+        } catch (error) {
+          if (activeRequest !== requestId) return;
+
+          failed++;
+          lastError = controller.signal.aborted
+            ? "The refresh timed out. Previous estimates were kept."
+            : error instanceof Error
+              ? error.message
+              : "Some prices could not be refreshed.";
+
+          if (controller.signal.aborted) stop = true;
+        } finally {
+          window.clearTimeout(timeout);
+        }
+
+        if (stop) break;
+      }
+
+      if (activeRequest !== requestId) return;
+
+      renderCards();
+
+      setPriceStatus(
+        failed > 0
+          ? `${updated} updated. ${lastError}`
+          : `Prices checked for ${updated} ${
+              updated === 1 ? "entry" : "entries"
+            }.`,
+      );
+    } finally {
+      if (refreshController === controller) {
+        refreshing = false;
+        refreshController = undefined;
+        syncButtons();
+      }
+    }
+  }
+
+  async function removeCard(card: ChaseCard, button: HTMLButtonElement) {
+    if (loading || refreshing || removing) return;
+
+    if (
+      !window.confirm(
+        `Remove ${card.name} — ${card.set_name} #${card.collector_number} (${finishLabel(card.finish)}) from your chase list?`,
+      )
+    ) {
+      return;
+    }
+
+    removing = true;
+    syncButtons();
+    button.textContent = "…";
+    setStatus(`Removing ${card.name}…`);
+
+    let removed = false;
 
     try {
       const {
@@ -258,17 +561,80 @@
         error: sessionError,
       } = await supabase.auth.getSession();
 
-      if (currentLoad !== loadId) return;
-
-      if (sessionError) {
-        list.replaceChildren();
-        setStatus("Couldn’t check your sign-in. Please try again.");
+      if (sessionError || !session) {
+        setStatus("Please sign in again before removing a card.");
         return;
       }
 
-      if (!session) {
+      const { data, error } = await supabase
+        .from("chase_cards")
+        .delete()
+        .eq("id", card.id)
+        .select("id");
+
+      if (error) {
+        setStatus(`Couldn’t remove the card: ${error.message}`);
+        return;
+      }
+
+      if (!data?.length) {
+        setStatus("The card wasn’t removed. Refresh your list and try again.");
+        return;
+      }
+
+      removed = true;
+      await loadChaseList(false);
+    } catch {
+      setStatus("Couldn’t remove the card. Please try again shortly.");
+    } finally {
+      removing = false;
+      button.textContent = "×";
+      syncButtons();
+
+      if (removed) {
+        const next =
+          list?.querySelector<HTMLButtonElement>(".chase-list-remove");
+
+        if (next) {
+          next.focus();
+        } else {
+          document.querySelector<HTMLElement>("#chase-list-heading")?.focus();
+        }
+      }
+    }
+  }
+
+  async function loadChaseList(autoRefresh = true) {
+    if (!list) return;
+
+    const activeRequest = ++requestId;
+
+    refreshController?.abort();
+    loading = true;
+    clearTotal();
+    setPriceStatus("");
+    syncButtons();
+
+    let loaded = false;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (activeRequest !== requestId) return;
+
+      signedIn = Boolean(session) && !sessionError;
+
+      if (!signedIn) {
+        cards = [];
         list.replaceChildren();
-        setStatus("Sign in above to see your saved chase cards.");
+        setStatus(
+          sessionError
+            ? "Couldn’t check your sign-in. Please try again."
+            : "Sign in above to see your saved chase cards.",
+        );
         return;
       }
 
@@ -277,26 +643,46 @@
       const { data, error } = await supabase
         .from("chase_cards")
         .select(
-          "id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at",
+          "id, scryfall_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at",
         )
         .order("created_at", { ascending: false });
 
-      if (currentLoad !== loadId) return;
+      if (activeRequest !== requestId) return;
 
       if (error) {
+        cards = [];
         list.replaceChildren();
         setStatus(`Couldn’t load your chase list: ${error.message}`);
         return;
       }
 
-      renderCards((data ?? []) as ChaseCard[]);
+      cards = (data ?? []) as ChaseCard[];
+      renderCards();
+      loaded = true;
     } catch {
-      if (currentLoad !== loadId) return;
+      if (activeRequest !== requestId) return;
 
+      cards = [];
       list.replaceChildren();
       setStatus("Couldn’t load your chase list. Please try again shortly.");
+    } finally {
+      if (activeRequest === requestId) {
+        loading = false;
+        syncButtons();
+      }
+    }
+
+    if (loaded && autoRefresh && activeRequest === requestId) {
+      // Allow an aborted earlier refresh to finish cleaning up.
+      window.setTimeout(() => {
+        if (activeRequest === requestId) void refreshPrices();
+      }, 0);
     }
   }
+
+  refreshButton?.addEventListener("click", () => {
+    void refreshPrices(true);
+  });
 
   supabase.auth.onAuthStateChange(() => {
     window.setTimeout(() => {
@@ -312,6 +698,33 @@
 </script>
 
 <style>
+  .chase-refresh {
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .chase-refresh:hover:not(:disabled) {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .chase-refresh:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .chase-refresh:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   .chase-list-items :global(.chase-list-card) {
     position: relative;
     display: flex;
@@ -354,7 +767,8 @@
     outline-offset: 4px;
   }
 
-  .chase-list-items :global(.chase-list-meta) {
+  .chase-list-items :global(.chase-list-meta),
+  .chase-list-items :global(.chase-list-change) {
     margin: 0;
     font-size: 0.875rem;
     color: var(--color-brand-muted);
