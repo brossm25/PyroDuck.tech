@@ -38,6 +38,7 @@ jobs:
           printf 'PUBLIC_SUPABASE_URL=%s\nPUBLIC_SUPABASE_PUBLISHABLE_KEY=%s\n' \
             "$PUBLIC_SUPABASE_URL" \
             "$PUBLIC_SUPABASE_PUBLISHABLE_KEY" > site/.env
+          git add -f site/.env
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v16
