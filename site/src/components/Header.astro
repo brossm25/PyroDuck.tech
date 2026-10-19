@@ -81,9 +81,8 @@ const navigation = [
 
         <div class="mt-2 border-t border-pyroduck-plasma/20 px-2 pt-2">
           <div class="header-auth-signed-in hidden space-y-2">
-            <p
-              class="header-auth-email truncate px-2 text-sm text-brand-muted"
-            ></p>
+            <p class="header-auth-email truncate px-2 text-sm text-pyroduck-lime font-semibold">
+            </p>
             <button
               type="button"
               class="header-auth-sign-out w-full rounded-lg border border-pyroduck-plasma px-4 py-2.5 text-left text-base font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
@@ -102,9 +101,10 @@ const navigation = [
               class="mt-2 rounded-lg border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-3"
             >
               <p
-                class="header-auth-status mb-3 text-sm text-brand-muted"
+                class="header-auth-status mb-3 text-sm text-pyroduck-lime font-semibold"
                 role="status"
-              ></p>
+              >
+              </p>
               <form class="header-auth-form flex flex-col gap-3">
                 <div>
                   <label
@@ -184,9 +184,8 @@ const navigation = [
 
       <div class="header-auth-signed-in ml-2 hidden items-center gap-2">
         <span
-          class="header-auth-email max-w-[10rem] truncate text-sm text-brand-muted lg:max-w-[14rem]"
-          title=""
-        ></span>
+          class="header-auth-email max-w-[10rem] truncate text-sm text-pyroduck-lime font-semibold lg:max-w-[14rem]"
+          title=""></span>
         <button
           type="button"
           class="header-auth-sign-out rounded-lg border border-pyroduck-plasma px-3 py-1.5 text-sm font-semibold text-brand-text transition-colors hover:bg-pyroduck-plasma/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pyroduck-lime lg:px-4"
@@ -208,9 +207,10 @@ const navigation = [
             Chase list account
           </p>
           <p
-            class="header-auth-status mb-3 text-sm text-brand-muted"
+            class="header-auth-status mb-3 text-sm text-pyroduck-lime font-semibold"
             role="status"
-          ></p>
+          >
+          </p>
           <form class="header-auth-form flex flex-col gap-3">
             <div>
               <label
@@ -273,18 +273,30 @@ const navigation = [
 <script>
   import { supabase } from "@/lib/supabase";
 
-  const guestBlocks = document.querySelectorAll<HTMLElement>(".header-auth-guest");
+  const guestBlocks =
+    document.querySelectorAll<HTMLElement>(".header-auth-guest");
+
   const signedInBlocks = document.querySelectorAll<HTMLElement>(
     ".header-auth-signed-in",
   );
-  const emailLabels = document.querySelectorAll<HTMLElement>(".header-auth-email");
-  const statusNodes = document.querySelectorAll<HTMLElement>(".header-auth-status");
+
+  // Keep the existing markup classes, but display profile names here.
+  const accountLabels =
+    document.querySelectorAll<HTMLElement>(".header-auth-email");
+
+  const statusNodes = document.querySelectorAll<HTMLElement>(
+    ".header-auth-status",
+  );
+
   const forms = document.querySelectorAll<HTMLFormElement>(".header-auth-form");
+
   const signOutButtons = document.querySelectorAll<HTMLButtonElement>(
     ".header-auth-sign-out",
   );
 
-  let pendingAction: "login" | "signup" = "login";
+  let busy = false;
+  let sessionRequest = 0;
+  let displayedUserId: string | null = null;
 
   function setStatus(message: string) {
     statusNodes.forEach((node) => {
@@ -292,79 +304,129 @@ const navigation = [
     });
   }
 
-  function setBusy(busy: boolean) {
+  function errorMessage(error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "message" in error &&
+      typeof error.message === "string"
+    ) {
+      return error.message;
+    }
+
+    return "Something went wrong. Please try again.";
+  }
+
+  function setBusy(value: boolean) {
+    busy = value;
+
     forms.forEach((form) => {
       form.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
-        button.disabled = busy;
+        button.disabled = value;
       });
     });
+
     signOutButtons.forEach((button) => {
-      button.disabled = busy;
+      button.disabled = value;
     });
   }
 
-  function showSession(email: string | undefined) {
-    if (email) {
-      guestBlocks.forEach((block) => {
-        block.classList.add("hidden");
-        if (block instanceof HTMLDetailsElement) block.open = false;
-      });
-      signedInBlocks.forEach((block) => {
-        block.classList.remove("hidden");
-        // Desktop chip uses flex row; mobile menu block stays stacked
-        if (block.classList.contains("items-center")) {
-          block.classList.add("flex");
-        }
-      });
-      emailLabels.forEach((label) => {
-        label.textContent = email;
-        label.setAttribute("title", email);
-      });
-      setStatus("");
-      return;
-    }
+  function setAccountLabel(name: string, username?: string) {
+    accountLabels.forEach((label) => {
+      label.textContent = name;
+      label.title = username ? `${name} · @${username}` : name;
+    });
+  }
+
+  function showSession(signedIn: boolean) {
+    guestBlocks.forEach((block) => {
+      block.classList.toggle("hidden", signedIn);
+
+      if (signedIn && block instanceof HTMLDetailsElement) {
+        block.open = false;
+      }
+    });
 
     signedInBlocks.forEach((block) => {
-      block.classList.add("hidden");
-      block.classList.remove("flex");
+      block.classList.toggle("hidden", !signedIn);
+
+      if (block.classList.contains("items-center")) {
+        block.classList.toggle("flex", signedIn);
+      }
     });
-    guestBlocks.forEach((block) => {
-      block.classList.remove("hidden");
-    });
-    emailLabels.forEach((label) => {
-      label.textContent = "";
-      label.removeAttribute("title");
-    });
+
+    if (!signedIn) {
+      displayedUserId = null;
+      setAccountLabel("");
+    }
   }
 
   async function refreshSession() {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      setStatus(error.message);
-      showSession(undefined);
-      return;
+    const currentRequest = ++sessionRequest;
+
+    try {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (currentRequest !== sessionRequest) return;
+
+      if (error) {
+        showSession(false);
+        setStatus(error.message);
+        return;
+      }
+
+      const session = data.session;
+
+      if (!session) {
+        showSession(false);
+        return;
+      }
+
+      const userId = session.user.id;
+
+      if (displayedUserId !== userId) {
+        displayedUserId = userId;
+        setAccountLabel("My account");
+      }
+
+      showSession(true);
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("username, display_name")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (currentRequest !== sessionRequest) return;
+
+      if (profileError || !profile) {
+        setAccountLabel("My account");
+        return;
+      }
+
+      setAccountLabel(profile.display_name, profile.username);
+    } catch {
+      if (currentRequest === sessionRequest) {
+        setStatus("Couldn’t refresh your account. Please try again.");
+      }
     }
-    showSession(data.session?.user.email);
   }
 
   forms.forEach((form) => {
-    form
-      .querySelectorAll<HTMLButtonElement>("button[data-account-action]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const action = button.dataset.accountAction;
-          if (action === "signup" || action === "login") {
-            pendingAction = action;
-          }
-        });
-      });
-
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (busy) return;
 
-      const data = new FormData(form);
-      const email = String(data.get("email") ?? "").trim();
-      const password = String(data.get("password") ?? "");
+      const submitter = event.submitter;
+      const action =
+        submitter instanceof HTMLButtonElement &&
+        submitter.dataset.accountAction === "signup"
+          ? "signup"
+          : "login";
+
+      const formData = new FormData(form);
+      const email = String(formData.get("email") ?? "").trim();
+      const password = String(formData.get("password") ?? "");
 
       if (!email || !password) {
         setStatus("Email and password are required.");
@@ -372,30 +434,28 @@ const navigation = [
       }
 
       setBusy(true);
-      setStatus(
-        pendingAction === "signup" ? "Creating account…" : "Logging in…",
-      );
+      setStatus(action === "signup" ? "Creating account…" : "Logging in…");
 
       try {
-        if (pendingAction === "signup") {
-          const { data: signUpData, error } = await supabase.auth.signUp({
+        if (action === "signup") {
+          const { data, error } = await supabase.auth.signUp({
             email,
             password,
           });
+
           if (error) throw error;
 
-          if (signUpData.session) {
-            setStatus("Account created. You’re signed in.");
-          } else {
-            setStatus(
-              "Account created. Check your email to confirm before logging in (if confirmations are on).",
-            );
-          }
+          setStatus(
+            data.session
+              ? "Account created. You’re signed in."
+              : "Check your email to confirm your account before logging in.",
+          );
         } else {
           const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
           });
+
           if (error) throw error;
           setStatus("Logged in.");
         }
@@ -404,9 +464,7 @@ const navigation = [
         await refreshSession();
         window.dispatchEvent(new Event("chase-cards-changed"));
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Something went wrong.";
-        setStatus(message);
+        setStatus(errorMessage(error));
       } finally {
         setBusy(false);
       }
@@ -415,18 +473,27 @@ const navigation = [
 
   signOutButtons.forEach((button) => {
     button.addEventListener("click", async () => {
+      if (busy) return;
+
       setBusy(true);
       setStatus("Logging out…");
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        setStatus(error.message);
+
+      try {
+        const { error } = await supabase.auth.signOut();
+
+        if (error) throw error;
+
+        // Invalidate any unfinished profile lookup.
+        sessionRequest++;
+        showSession(false);
+        setStatus("Logged out.");
+
+        window.dispatchEvent(new Event("chase-cards-changed"));
+      } catch (error) {
+        setStatus(errorMessage(error));
+      } finally {
         setBusy(false);
-        return;
       }
-      setStatus("Logged out.");
-      await refreshSession();
-      window.dispatchEvent(new Event("chase-cards-changed"));
-      setBusy(false);
     });
   });
 
@@ -441,26 +508,50 @@ const navigation = [
 
       menu.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && menu.open) {
+          event.stopPropagation();
           menu.open = false;
           menu.querySelector("summary")?.focus();
         }
       });
     });
 
-  // Close desktop auth popover when clicking outside
   document.addEventListener("click", (event) => {
-    const target = event.target as Node | null;
+    const target = event.target;
+
+    if (!(target instanceof Node)) return;
+
     document
       .querySelectorAll<HTMLDetailsElement>("nav details.header-auth-guest")
       .forEach((panel) => {
-        if (panel.open && target && !panel.contains(target)) {
+        if (panel.open && !panel.contains(target)) {
           panel.open = false;
         }
       });
   });
 
   supabase.auth.onAuthStateChange((_event, session) => {
-    showSession(session?.user.email);
+    // Update visibility immediately without making database calls here.
+    if (!session) {
+      sessionRequest++;
+      showSession(false);
+    } else {
+      if (displayedUserId !== session.user.id) {
+        sessionRequest++;
+        displayedUserId = session.user.id;
+        setAccountLabel("My account");
+      }
+
+      showSession(true);
+    }
+
+    // Read the profile after the authentication callback finishes.
+    window.setTimeout(() => {
+      void refreshSession();
+    }, 0);
+  });
+
+  window.addEventListener("player-profile-changed", () => {
+    void refreshSession();
   });
 
   void refreshSession();

@@ -1,0 +1,494 @@
+<section
+  aria-labelledby="profile-heading"
+  class="rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
+>
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h2
+        id="profile-heading"
+        class="text-2xl font-bold text-brand-text sm:text-3xl"
+      >
+        Your player profile.
+      </h2>
+
+      <p class="profile-summary mt-3 font-semibold text-pyroduck-lime"></p>
+    </div>
+
+    <button
+      type="button"
+      class="profile-edit profile-secondary"
+      aria-expanded="false"
+      aria-controls="player-profile-form"
+      hidden
+    >
+      Edit profile
+    </button>
+  </div>
+
+  <p class="profile-status mt-4 text-brand-muted" role="status"></p>
+
+  <form
+    id="player-profile-form"
+    class="profile-form mt-6"
+    autocomplete="off"
+    novalidate
+    hidden
+  >
+    <p class="mb-6 max-w-2xl text-brand-muted">
+      Choose your player identity. Your email stays separate and is still
+      used to sign in.
+    </p>
+
+    <fieldset class="profile-fields" disabled>
+      <div>
+        <label for="player-username" class="profile-label">
+          Username
+        </label>
+
+        <input
+          id="player-username"
+          name="player_handle"
+          type="text"
+          required
+          minlength="3"
+          maxlength="24"
+          pattern="[a-z0-9][a-z0-9_]{2,23}"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          aria-describedby="username-help"
+          placeholder="ducky"
+          class="profile-input"
+        />
+
+        <p id="username-help" class="mt-2 text-sm text-brand-muted">
+          3–24 letters, numbers, or underscores. Start with a letter or
+          number. Usernames are saved in lowercase and must be unique.
+        </p>
+      </div>
+
+      <div>
+        <label for="player-display-name" class="profile-label">
+          Display name
+        </label>
+
+        <input
+          id="player-display-name"
+          name="display_name"
+          type="text"
+          required
+          maxlength="60"
+          autocomplete="nickname"
+          placeholder="Ducky"
+          class="profile-input"
+        />
+
+        <p class="mt-2 text-sm text-brand-muted">
+          The name shown on your profile. Spaces and capital letters are fine.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <button type="submit" class="profile-save">
+          Save profile
+        </button>
+
+        <button
+          type="button"
+          class="profile-cancel profile-secondary"
+          hidden
+        >
+          Cancel
+        </button>
+      </div>
+    </fieldset>
+  </form>
+</section>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Profile {
+    id: string;
+    username: string;
+    display_name: string;
+  }
+
+  const form = document.querySelector<HTMLFormElement>(".profile-form");
+  const fields =
+    document.querySelector<HTMLFieldSetElement>(".profile-fields");
+  const usernameInput =
+    document.querySelector<HTMLInputElement>("#player-username");
+  const displayNameInput =
+    document.querySelector<HTMLInputElement>("#player-display-name");
+  const status = document.querySelector<HTMLElement>(".profile-status");
+  const summary = document.querySelector<HTMLElement>(".profile-summary");
+  const saveButton =
+    document.querySelector<HTMLButtonElement>(".profile-save");
+  const editButton =
+    document.querySelector<HTMLButtonElement>(".profile-edit");
+  const cancelButton =
+    document.querySelector<HTMLButtonElement>(".profile-cancel");
+
+  let profile: Profile | null = null;
+  let activeUserId: string | null = null;
+  let loading = false;
+  let saving = false;
+  let editing = false;
+  let requestId = 0;
+
+  function setStatus(message: string) {
+    if (status) status.textContent = message;
+  }
+
+  function fillInputs() {
+    if (usernameInput) {
+      usernameInput.value = profile?.username ?? "";
+      usernameInput.setCustomValidity("");
+    }
+
+    if (displayNameInput) {
+      displayNameInput.value = profile?.display_name ?? "";
+      displayNameInput.setCustomValidity("");
+    }
+  }
+
+  function render() {
+    const busy = loading || saving;
+    const showForm = Boolean(activeUserId) && editing;
+
+    if (summary) {
+      summary.textContent = profile
+        ? `${profile.display_name} · @${profile.username}`
+        : "";
+    }
+
+    if (form) form.hidden = !showForm;
+
+    if (fields) {
+      fields.disabled = busy || !activeUserId;
+    }
+
+    if (editButton) {
+      editButton.hidden = !profile || editing;
+      editButton.disabled = busy;
+      editButton.setAttribute("aria-expanded", String(showForm));
+    }
+
+    if (cancelButton) {
+      cancelButton.hidden = !profile;
+      cancelButton.disabled = busy;
+    }
+
+    if (saveButton) {
+      saveButton.textContent = saving ? "Saving…" : "Save profile";
+    }
+  }
+
+  async function loadProfile() {
+    const currentRequest = ++requestId;
+
+    loading = true;
+    editing = false;
+    profile = null;
+    activeUserId = null;
+    fillInputs();
+    render();
+    setStatus("Loading your profile…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+
+      if (sessionError) {
+        setStatus("Couldn’t check your sign-in. Refresh and try again.");
+        return;
+      }
+
+      if (!session) {
+        setStatus("Sign in to choose your username and display name.");
+        return;
+      }
+
+      const userId = session.user.id;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, display_name")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (currentRequest !== requestId) return;
+
+      if (error) {
+        setStatus(`Couldn’t load your profile: ${error.message}`);
+        return;
+      }
+
+      activeUserId = userId;
+      profile = data as Profile | null;
+      editing = !profile;
+
+      fillInputs();
+
+      setStatus(
+        profile ? "" : "Choose your player identity to get started.",
+      );
+    } catch {
+      if (currentRequest === requestId) {
+        setStatus("Couldn’t load your profile. Refresh and try again.");
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        loading = false;
+        render();
+      }
+    }
+  }
+
+  editButton?.addEventListener("click", () => {
+    if (!profile || loading || saving) return;
+
+    editing = true;
+    fillInputs();
+    setStatus("");
+    render();
+    usernameInput?.focus();
+  });
+
+  cancelButton?.addEventListener("click", () => {
+    if (!profile || saving) return;
+
+    editing = false;
+    fillInputs();
+    setStatus("");
+    render();
+    editButton?.focus();
+  });
+
+  usernameInput?.addEventListener("input", () => {
+    usernameInput.setCustomValidity("");
+  });
+
+  displayNameInput?.addEventListener("input", () => {
+    displayNameInput.setCustomValidity("");
+  });
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (
+      saving ||
+      loading ||
+      !editing ||
+      !activeUserId ||
+      !usernameInput ||
+      !displayNameInput
+    ) {
+      return;
+    }
+
+    // Normalize before running validation.
+    const username = usernameInput.value.trim().toLowerCase();
+    const displayName = displayNameInput.value.trim();
+
+    usernameInput.value = username;
+    displayNameInput.value = displayName;
+
+    usernameInput.setCustomValidity(
+      /^[a-z0-9][a-z0-9_]{2,23}$/.test(username)
+        ? ""
+        : "Use 3–24 letters, numbers, or underscores. Start with a letter or number.",
+    );
+
+    displayNameInput.setCustomValidity(
+      displayName.length >= 1 && displayName.length <= 60
+        ? ""
+        : "Enter a display name between 1 and 60 characters.",
+    );
+
+    if (!form.reportValidity()) return;
+
+    const userId = activeUserId;
+    const currentRequest = requestId;
+
+    saving = true;
+    render();
+    setStatus("Saving your profile…");
+
+    let saved = false;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+
+      if (sessionError || session?.user.id !== userId) {
+        setStatus("Your sign-in changed. Refresh before saving your profile.");
+        return;
+      }
+
+      const values = {
+        username,
+        display_name: displayName,
+      };
+
+      const result = profile
+        ? await supabase
+            .from("profiles")
+            .update(values)
+            .eq("id", userId)
+            .select("id, username, display_name")
+            .single()
+        : await supabase
+            .from("profiles")
+            .insert({ id: userId, ...values })
+            .select("id, username, display_name")
+            .single();
+
+      if (currentRequest !== requestId) return;
+
+      if (result.error) {
+        setStatus(
+          result.error.code === "23505"
+            ? "That username is already taken, or a profile was created in another tab. Try another username or refresh."
+            : `Couldn’t save your profile: ${result.error.message}`,
+        );
+        return;
+      }
+
+      profile = result.data as Profile;
+      editing = false;
+      saved = true;
+      setStatus("Your profile is saved.");
+
+      window.dispatchEvent(
+        new CustomEvent("player-profile-changed", {
+          detail: {
+            displayName: profile.display_name,
+            username: profile.username,
+          },
+        }),
+      );
+    } catch {
+      if (currentRequest === requestId) {
+        setStatus("Couldn’t save your profile. Please try again.");
+      }
+    } finally {
+      saving = false;
+      render();
+
+      if (saved && currentRequest === requestId) {
+        editButton?.focus();
+      }
+    }
+  });
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event === "SIGNED_OUT" ||
+      (event === "SIGNED_IN" && session?.user.id !== activeUserId)
+    ) {
+      window.setTimeout(() => {
+        void loadProfile();
+      }, 0);
+    }
+  });
+
+  void loadProfile();
+</script>
+
+<style>
+  [hidden] {
+    display: none !important;
+  }
+
+  .profile-status:empty,
+  .profile-summary:empty {
+    display: none;
+  }
+
+  .profile-fields {
+    display: grid;
+    gap: 1.5rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .profile-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--color-brand-text);
+    font-weight: 600;
+  }
+
+  .profile-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 45%, transparent);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .profile-save,
+  .profile-secondary {
+    min-height: 44px;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.5rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .profile-save {
+    border: 1px solid var(--color-pyroduck-plasma);
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .profile-save:hover:not(:disabled) {
+    border-color: var(--color-pyroduck-lime);
+    background: var(--color-pyroduck-lime);
+  }
+
+  .profile-secondary {
+    border: 1px solid var(--color-pyroduck-plasma);
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+  }
+
+  .profile-secondary:hover:not(:disabled) {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .profile-input:focus-visible,
+  .profile-save:focus-visible,
+  .profile-secondary:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .profile-fields:disabled {
+    opacity: 0.6;
+  }
+
+  button:disabled,
+  .profile-fields:disabled button {
+    cursor: default;
+  }
+</style>
