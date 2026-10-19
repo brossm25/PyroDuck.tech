@@ -1,0 +1,127 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout
+  title="Ducky's MTG Corner"
+  description="Explore Ducky's Magic: The Gathering card hunt, favorite artwork, and journey replacing proxies with collected cards."
+>
+  <section aria-labelledby="mtg-heading" class="mtg-hero px-6 py-16 sm:py-24">
+    <div class="mx-auto max-w-5xl">
+      <a
+        href="/#about"
+        class="rounded-sm font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+      >
+        ← Back to About me
+      </a>
+
+      <p
+        class="mb-3 mt-10 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        Beyond the code
+      </p>
+
+      <h1
+        id="mtg-heading"
+        class="text-4xl font-bold tracking-tight text-brand-text sm:text-6xl"
+      >
+        Ducky's <span class="text-pyroduck-plasma">MTG Corner.</span>
+      </h1>
+
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-brand-muted">
+        A little space for Magic: The Gathering—building decks, enjoying the
+        artwork, and gradually replacing my proxies with cards I want to own.
+      </p>
+    </div>
+  </section>
+
+  <section
+    id="card-hunt"
+    aria-labelledby="hunt-heading"
+    class="scroll-mt-32 px-6 pb-16 sm:pb-24"
+  >
+    <div class="mx-auto max-w-5xl">
+      <p
+        class="mb-3 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        On the lookout
+      </p>
+
+      <h2
+        id="hunt-heading"
+        class="text-3xl font-bold text-brand-text sm:text-4xl"
+      >
+        The card hunt.
+      </h2>
+
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-brand-muted">
+        The cards, artwork, and finishes I'm looking for as I build my
+        collection, one card at a time.
+      </p>
+
+      <div
+        class="mt-8 rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
+      >
+        <p class="mt-3 leading-relaxed text-brand-muted">
+          My first hunt is coming together.
+        </p>
+        <p class="mt-3 leading-relaxed text-brand-muted">
+          Check back for the cards I'm searching for and the versions I have my
+          eye on.
+        </p>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .mtg-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: radial-gradient(
+      ellipse at 85% 50%,
+      color-mix(in srgb, var(--color-pyroduck-plasma) 14%, transparent),
+      transparent 65%
+    );
+  }
+
+  .mtg-hero::before,
+  .mtg-hero::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: 18%;
+    right: 8%;
+    width: clamp(160px, 20vw, 260px);
+    aspect-ratio: 5 / 7;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
+    border-radius: 1rem;
+    background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-pyroduck-plasma) 6%, transparent),
+      transparent
+    );
+    pointer-events: none;
+    transform: rotate(14deg);
+  }
+
+  .mtg-hero::after {
+    right: 13%;
+    top: 23%;
+    transform: rotate(-10deg);
+  }
+
+  @media (max-width: 639px) {
+    .mtg-hero::before,
+    .mtg-hero::after {
+      opacity: 0.4;
+      right: -3rem;
+    }
+
+    .mtg-hero::after {
+      right: 0;
+    }
+  }
+</style>
