@@ -1,0 +1,772 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="Commander Deck">
+  <section class="px-6 py-12 sm:py-16" aria-labelledby="deck-heading">
+    <div class="deck-editor mx-auto max-w-5xl">
+      <a href="/mtg/decks">← Your decks</a>
+      <h1 id="deck-heading" class="mt-8 text-4xl font-bold">Commander deck</h1>
+      <p id="deck-status" role="status">Loading deck…</p>
+      <p id="deck-count"></p>
+
+      <form id="deck-settings" class="panel" hidden>
+        <h2>Deck details</h2>
+        <label>Deck name<input name="name" required maxlength="100" /></label>
+        <label
+          >Description<textarea name="description" maxlength="5000" rows="3"
+          ></textarea></label
+        >
+        <label
+          >Who can view this deck?
+          <select name="visibility">
+            <option value="private">Private — only you</option>
+            <option value="friends">Friends — accepted friends</option>
+            <option value="public">Public — anyone with the link</option>
+          </select>
+        </label>
+        <button type="submit">Save details</button>
+      </form>
+
+      <div id="deck-add" class="panel" hidden>
+        <h2>Add a card</h2>
+        <form id="deck-search">
+          <label for="deck-query">Card name or Scryfall search</label>
+          <div class="control-row">
+            <input
+              id="deck-query"
+              name="query"
+              required
+              maxlength="150"
+              placeholder="Try Atla Palani"
+            />
+            <button type="submit">Search</button>
+          </div>
+        </form>
+        <p id="deck-search-status" role="status"></p>
+        <ul id="deck-results" class="card-grid"></ul>
+        <p class="muted">
+          Card information and images provided by <a
+            href="https://scryfall.com"
+            target="_blank"
+            rel="noopener noreferrer">Scryfall ↗</a
+          >.
+        </p>
+      </div>
+
+      <section class="panel" aria-labelledby="commander-heading">
+        <h2 id="commander-heading">Commanders</h2>
+        <ul id="deck-commanders" class="card-grid"></ul>
+      </section>
+      <section class="panel" aria-labelledby="main-heading">
+        <h2 id="main-heading">Main deck</h2>
+        <ul id="deck-main" class="card-grid"></ul>
+      </section>
+      <p class="muted">
+        Draft deck: the count includes commanders. This version does not
+        validate Commander legality, color identity, singleton rules, or
+        commander pairings.
+      </p>
+    </div>
+  </section>
+
+  <dialog id="deck-picker" aria-labelledby="picker-heading">
+    <form method="dialog"><button autofocus>Close ×</button></form>
+    <h2 id="picker-heading">Choose printing</h2>
+    <p id="picker-status" role="status"></p>
+    <form id="picker-add">
+      <label>Printing<select id="picker-printing" required></select></label>
+      <img id="picker-image" alt="" width="488" height="680" hidden />
+      <label>Finish<select id="picker-finish" required></select></label>
+      <label
+        >Use as<select id="picker-role"
+          ><option value="main">Main deck</option><option value="commander"
+            >Commander</option
+          ></select
+        ></label
+      >
+      <label
+        >Quantity<input
+          id="picker-quantity"
+          type="number"
+          min="1"
+          max="1000"
+          step="1"
+          value="1"
+          required
+        /></label
+      >
+      <button id="picker-save" type="submit" disabled>Add to deck</button>
+    </form>
+  </dialog>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Deck {
+    id: string;
+    user_id: string;
+    name: string;
+    description: string;
+    visibility: string;
+  }
+  interface Entry {
+    id: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    quantity: number;
+    card_role: string;
+    image_url: string | null;
+  }
+  interface Card {
+    id: string;
+    oracle_id?: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    scryfall_uri: string;
+    prints_search_uri: string;
+    finishes: string[];
+    image_uris?: { normal: string };
+    card_faces?: { image_uris?: { normal: string } }[];
+  }
+  interface Page {
+    data: Card[];
+    has_more: boolean;
+    next_page?: string;
+  }
+  const get = <T extends HTMLElement>(id: string) =>
+    document.getElementById(id) as T;
+  const settings = get<HTMLFormElement>("deck-settings");
+  const search = get<HTMLFormElement>("deck-search");
+  const picker = get<HTMLDialogElement>("deck-picker");
+  const printing = get<HTMLSelectElement>("picker-printing");
+  const finish = get<HTMLSelectElement>("picker-finish");
+  const role = get<HTMLSelectElement>("picker-role");
+  const quantity = get<HTMLInputElement>("picker-quantity");
+  const image = get<HTMLImageElement>("picker-image");
+  const save = get<HTMLButtonElement>("picker-save");
+  const deckId = new URLSearchParams(location.search).get("id");
+  let deck: Deck | null = null;
+  let owner = false;
+  let busy = false;
+  let version = 0;
+  let printings: Card[] = [];
+  let pickerController: AbortController | undefined;
+  let searchController: AbortController | undefined;
+  const imageFor = (card: Card) =>
+    card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal;
+  const message = (text: string) => {
+    get("deck-status").textContent = text;
+  };
+  const errorText = (error: unknown) =>
+    typeof error === "object" && error !== null && "message" in error
+      ? String(error.message)
+      : "Something went wrong. Please try again.";
+
+  function controls() {
+    document
+      .querySelectorAll<
+        | HTMLButtonElement
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+      >(
+        "#deck-settings input, #deck-settings textarea, #deck-settings select, #deck-settings button, #deck-add input, #deck-add button, .entry-actions button, .entry-actions input, #picker-add input, #picker-add select, #picker-save",
+      )
+      .forEach((element) => {
+        element.disabled = busy || !owner;
+      });
+    save.disabled = busy || !owner || !printings.length;
+  }
+
+  async function requireOwner(expectedVersion: number) {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (
+      expectedVersion !== version ||
+      !deck ||
+      session?.user.id !== deck.user_id
+    )
+      throw new Error("Your sign-in changed. Refresh the page.");
+  }
+
+  async function mutate(action: () => Promise<void>) {
+    if (!owner || busy) return;
+    const current = version;
+    busy = true;
+    controls();
+    try {
+      await requireOwner(current);
+      await action();
+    } catch (error) {
+      if (current === version) {
+        message(errorText(error));
+        if (picker.open) get("picker-status").textContent = errorText(error);
+      }
+    } finally {
+      busy = false;
+      controls();
+    }
+  }
+
+  function renderEntries(entries: Entry[]) {
+    const commanders = get("deck-commanders");
+    const main = get("deck-main");
+    commanders.replaceChildren();
+    main.replaceChildren();
+    get("deck-count").textContent =
+      `${entries.reduce((sum, entry) => sum + entry.quantity, 0)} / 100 cards · ${deck?.visibility ?? ""}`;
+    for (const entry of entries) {
+      const item = document.createElement("li");
+      item.className = "entry";
+      if (entry.image_url) {
+        const img = document.createElement("img");
+        img.src = entry.image_url;
+        img.alt = entry.name;
+        img.loading = "lazy";
+        img.width = 488;
+        img.height = 680;
+        item.append(img);
+      }
+      const heading = document.createElement("h3");
+      heading.textContent = `${entry.quantity} × ${entry.name}`;
+      const meta = document.createElement("p");
+      meta.textContent = `${entry.set_name} #${entry.collector_number} · ${entry.finish}`;
+      item.append(heading, meta);
+      if (owner) {
+        const actions = document.createElement("div");
+        actions.className = "entry-actions";
+        const count = document.createElement("input");
+        count.type = "number";
+        count.min = "1";
+        count.max = "1000";
+        count.step = "1";
+        count.value = String(entry.quantity);
+        count.setAttribute("aria-label", `Quantity of ${entry.name}`);
+        const update = document.createElement("button");
+        update.textContent = "Save quantity";
+        update.addEventListener("click", () => {
+          const value = Number(count.value);
+          if (!count.reportValidity() || !Number.isInteger(value)) return;
+          void mutate(async () => {
+            const { data, error } = await supabase
+              .from("deck_cards")
+              .update({ quantity: value })
+              .eq("id", entry.id)
+              .eq("deck_id", deckId!)
+              .select("id");
+            if (error) throw error;
+            if (!data?.length)
+              throw new Error("Quantity was not saved. Refresh and try again.");
+            await loadEntries();
+            message("Quantity saved.");
+          });
+        });
+        const remove = document.createElement("button");
+        remove.textContent = "Remove";
+        remove.addEventListener("click", () => {
+          if (busy || !confirm(`Remove ${entry.name} from this deck?`)) return;
+          void mutate(async () => {
+            const { data, error } = await supabase
+              .from("deck_cards")
+              .delete()
+              .eq("id", entry.id)
+              .eq("deck_id", deckId!)
+              .select("id");
+            if (error) throw error;
+            if (!data?.length)
+              throw new Error("Card was not removed. Refresh and try again.");
+            await loadEntries();
+            message("Card removed.");
+          });
+        });
+        actions.append(count, update, remove);
+        item.append(actions);
+      }
+      (entry.card_role === "commander" ? commanders : main).append(item);
+    }
+    for (const group of [commanders, main]) {
+      if (!group.children.length) {
+        const empty = document.createElement("li");
+        empty.textContent = "No cards added yet.";
+        group.append(empty);
+      }
+    }
+    controls();
+  }
+
+  async function loadEntries() {
+    const current = version;
+    const { data, error } = await supabase
+      .from("deck_cards")
+      .select(
+        "id, name, set_name, collector_number, finish, quantity, card_role, image_url",
+      )
+      .eq("deck_id", deckId!)
+      .order("name");
+    if (current !== version) return;
+    if (error) throw error;
+    renderEntries((data ?? []) as Entry[]);
+  }
+
+  async function load() {
+    const current = ++version;
+    owner = false;
+    deck = null;
+    printings = [];
+    pickerController?.abort();
+    searchController?.abort();
+    picker.close();
+    settings.hidden = true;
+    get("deck-add").hidden = true;
+    get("deck-results").replaceChildren();
+    get("deck-commanders").replaceChildren();
+    get("deck-main").replaceChildren();
+    get("deck-count").textContent = "";
+    get("deck-heading").textContent = "Commander deck";
+    controls();
+    message("Loading deck…");
+    if (
+      !deckId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        deckId,
+      )
+    ) {
+      message("Open a deck from Your decks first.");
+      return;
+    }
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const { data, error } = await supabase
+        .from("decks")
+        .select("id, user_id, name, description, visibility")
+        .eq("id", deckId)
+        .maybeSingle();
+      if (current !== version) return;
+      if (error) throw error;
+      if (!data) {
+        message(
+          "Deck unavailable. It may be private, removed, or require signing in.",
+        );
+        return;
+      }
+      deck = data as Deck;
+      owner = session?.user.id === deck.user_id;
+      get("deck-heading").textContent = deck.name;
+      (settings.elements.namedItem("name") as HTMLInputElement).value =
+        deck.name;
+      (
+        settings.elements.namedItem("description") as HTMLTextAreaElement
+      ).value = deck.description;
+      (settings.elements.namedItem("visibility") as HTMLSelectElement).value =
+        deck.visibility;
+      settings.hidden = !owner;
+      get("deck-add").hidden = !owner;
+      await loadEntries();
+      if (current === version)
+        message(
+          owner ? "Your changes save to this deck." : "Viewing a shared deck.",
+        );
+    } catch (error) {
+      if (current === version) message(errorText(error));
+    } finally {
+      if (current === version) controls();
+    }
+  }
+
+  settings.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const values = new FormData(settings);
+    const name = String(values.get("name") ?? "").trim();
+    if (!name) return;
+    const description = String(values.get("description") ?? "");
+    const visibility = String(values.get("visibility"));
+    void mutate(async () => {
+      const { data, error } = await supabase
+        .from("decks")
+        .update({ name, description, visibility })
+        .eq("id", deckId!)
+        .eq("user_id", deck!.user_id)
+        .select("id");
+      if (error) throw error;
+      if (!data?.length)
+        throw new Error("Details were not saved. Refresh and try again.");
+      deck = { ...deck!, name, description, visibility };
+      get("deck-heading").textContent = name;
+      await loadEntries();
+      message("Deck details saved.");
+    });
+  });
+
+  function previewPrinting() {
+    const card = printings[Number(printing.value)];
+    finish.replaceChildren();
+    image.hidden = true;
+    if (!card) {
+      save.disabled = true;
+      return;
+    }
+    for (const value of card.finishes)
+      finish.add(
+        new Option(
+          value === "nonfoil"
+            ? "Nonfoil"
+            : value === "etched"
+              ? "Etched foil"
+              : "Foil",
+          value,
+        ),
+      );
+    const url = imageFor(card);
+    if (url) {
+      image.src = url;
+      image.alt = card.name;
+      image.hidden = false;
+    }
+    save.disabled = busy || !card.finishes.length;
+  }
+  printing.addEventListener("change", previewPrinting);
+  picker.addEventListener("close", () => pickerController?.abort());
+
+  async function choose(card: Card) {
+    if (busy || !owner) return;
+    const current = version;
+    pickerController?.abort();
+    const controller = new AbortController();
+    pickerController = controller;
+    printings = [];
+    printing.replaceChildren();
+    finish.replaceChildren();
+    image.hidden = true;
+    quantity.value = "1";
+    role.value = "main";
+    save.disabled = true;
+    get("picker-status").textContent = `Loading versions of ${card.name}…`;
+    picker.showModal();
+    try {
+      const endpoint = new URL(card.prints_search_uri);
+      endpoint.searchParams.set(
+        "q",
+        `(${endpoint.searchParams.get("q") ?? ""}) game:paper`,
+      );
+      endpoint.searchParams.set("unique", "prints");
+      let next: string | undefined = endpoint.href;
+      const all: Card[] = [];
+      while (next) {
+        const response = await fetch(next, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok)
+          throw new Error("Couldn’t load printings. Close and try again.");
+        const page: Page = await response.json();
+        all.push(...page.data);
+        next = page.has_more ? page.next_page : undefined;
+        if (next)
+          await new Promise((resolve) => window.setTimeout(resolve, 150));
+        controller.signal.throwIfAborted();
+      }
+      if (current !== version || controller.signal.aborted) return;
+      printings = all;
+      all.forEach((item, index) =>
+        printing.add(
+          new Option(
+            `${item.set_name} — #${item.collector_number}`,
+            String(index),
+          ),
+        ),
+      );
+      get("picker-status").textContent = all.length
+        ? "Choose printing, finish, and how to use the card."
+        : "No paper printings found.";
+      previewPrinting();
+    } catch (error) {
+      if (!controller.signal.aborted && current === version)
+        get("picker-status").textContent = errorText(error);
+    }
+  }
+
+  search.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy || !owner) return;
+    const query = get<HTMLInputElement>("deck-query").value.trim();
+    if (!query) return;
+    const current = version;
+    searchController?.abort();
+    const controller = new AbortController();
+    searchController = controller;
+    const results = get("deck-results");
+    results.replaceChildren();
+    get("deck-search-status").textContent = "Searching…";
+    try {
+      const endpoint = new URL("https://api.scryfall.com/cards/search");
+      endpoint.searchParams.set("q", `(${query}) game:paper`);
+      endpoint.searchParams.set("unique", "cards");
+      endpoint.searchParams.set("order", "name");
+      const response = await fetch(endpoint, {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (current !== version || controller.signal.aborted) return;
+      if (response.status === 404) {
+        get("deck-search-status").textContent =
+          "No cards found. Try another name.";
+        return;
+      }
+      if (!response.ok)
+        throw new Error("Search unavailable. Try again shortly.");
+      const page: Page = await response.json();
+      if (current !== version || controller.signal.aborted) return;
+      for (const card of page.data.slice(0, 12)) {
+        const li = document.createElement("li");
+        li.className = "entry";
+        const url = imageFor(card);
+        if (url) {
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = card.name;
+          img.loading = "lazy";
+          img.width = 488;
+          img.height = 680;
+          li.append(img);
+        }
+        const name = document.createElement("h3");
+        name.textContent = card.name;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Choose printing";
+        button.setAttribute("aria-haspopup", "dialog");
+        button.addEventListener("click", () => void choose(card));
+        li.append(name, button);
+        results.append(li);
+      }
+      get("deck-search-status").textContent =
+        `Showing ${Math.min(12, page.data.length)} results. Choose a printing to add a card.${page.has_more || page.data.length > 12 ? " Narrow your search for other matches." : ""}`;
+      controls();
+    } catch (error) {
+      if (!controller.signal.aborted && current === version)
+        get("deck-search-status").textContent = errorText(error);
+    }
+  });
+
+  get<HTMLFormElement>("picker-add").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const card = printings[Number(printing.value)];
+    const amount = Number(quantity.value);
+    if (
+      !card ||
+      !card.finishes.includes(finish.value) ||
+      !Number.isInteger(amount) ||
+      amount < 1 ||
+      amount > 1000
+    )
+      return;
+    const selectedFinish = finish.value;
+    const selectedRole = role.value;
+    void mutate(async () => {
+      const { data, error } = await supabase
+        .from("deck_cards")
+        .insert({
+          deck_id: deckId,
+          scryfall_id: card.id,
+          oracle_id: card.oracle_id ?? null,
+          name: card.name,
+          set_name: card.set_name,
+          collector_number: card.collector_number,
+          finish: selectedFinish,
+          quantity: amount,
+          card_role: selectedRole,
+          image_url: imageFor(card) ?? null,
+          scryfall_uri: card.scryfall_uri,
+        })
+        .select("id")
+        .single();
+      if (error?.code === "23505")
+        throw new Error(
+          "That printing and finish is already in this deck in the selected role. Change its quantity below.",
+        );
+      if (error) throw error;
+      if (!data) throw new Error("Card was not added.");
+      picker.close();
+      searchController?.abort();
+      search.reset();
+      get("deck-results").replaceChildren();
+      get("deck-search-status").textContent = "";
+      await loadEntries();
+      message(`Added ${card.name}.`);
+    });
+  });
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "SIGNED_OUT")
+      window.setTimeout(() => void load(), 0);
+  });
+  void load();
+</script>
+
+<style>
+  .deck-editor {
+    color: var(--color-brand-text);
+  }
+  .deck-editor :global(a) {
+    color: var(--color-pyroduck-plasma);
+  }
+  .deck-editor :global(a:hover) {
+    color: var(--color-pyroduck-lime);
+  }
+  .panel {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+  [hidden] {
+    display: none !important;
+  }
+  h2 {
+    margin: 0 0 1rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  label {
+    display: grid;
+    gap: 0.5rem;
+    margin-block: 1rem;
+  }
+  input,
+  textarea,
+  select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+  .control-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .control-row input {
+    flex: 1 1 14rem;
+  }
+  .deck-editor :global(button),
+  #deck-picker button {
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .deck-editor :global(button:hover:not(:disabled)),
+  #deck-picker button:hover:not(:disabled) {
+    background: var(--color-pyroduck-lime);
+  }
+  .deck-editor :global(:disabled),
+  #deck-picker :disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .deck-editor :global(:focus-visible),
+  #deck-picker :focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    gap: 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+  .card-grid :global(.entry) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .card-grid :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+  }
+  .card-grid :global(h3) {
+    margin-top: 0.75rem;
+    font-weight: 700;
+  }
+  .card-grid :global(p),
+  .muted {
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .card-grid :global(button) {
+    margin-top: 0.5rem;
+  }
+  .card-grid :global(.entry-actions) {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .card-grid :global(input) {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.5rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+  }
+  #deck-status {
+    margin-top: 1rem;
+    color: var(--color-brand-muted);
+  }
+  #deck-count {
+    margin-top: 0.5rem;
+    color: var(--color-pyroduck-lime);
+    font-weight: 700;
+  }
+  #deck-picker {
+    width: min(540px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+  #deck-picker::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+  #deck-picker > form:first-child {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+  #picker-image {
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    margin: 1rem auto;
+    border-radius: 0.75rem;
+  }
+</style>

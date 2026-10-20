@@ -1,0 +1,332 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="My Commander Decks">
+  <section class="px-6 py-12 sm:py-16" aria-labelledby="decks-heading">
+    <div class="mx-auto max-w-5xl">
+      <a href="/mtg" class="deck-back">← MTG Corner</a>
+
+      <p
+        class="mt-8 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        Build. Play. Share.
+      </p>
+
+      <h1
+        id="decks-heading"
+        class="mt-3 text-4xl font-bold text-brand-text sm:text-5xl"
+      >
+        Your Commander decks.
+      </h1>
+
+      <p class="mt-5 max-w-2xl text-lg text-brand-muted">
+        Give your next deck a name. Decks start private, and you can choose who
+        sees them as you build.
+      </p>
+
+      <form class="deck-create mt-8">
+        <label for="deck-name">Deck name</label>
+
+        <div class="deck-create-row">
+          <input
+            id="deck-name"
+            name="name"
+            type="text"
+            required
+            maxlength="100"
+            placeholder="Give your deck a name"
+            disabled
+          />
+          <button type="submit" disabled>Create deck</button>
+        </div>
+      </form>
+
+      <p class="deck-status mt-5 text-brand-muted" role="status"></p>
+
+      <ul class="deck-list mt-8"></ul>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Deck {
+    id: string;
+    name: string;
+    visibility: "private" | "friends" | "public";
+    created_at: string;
+  }
+
+  const form = document.querySelector<HTMLFormElement>(".deck-create");
+  const input = document.querySelector<HTMLInputElement>("#deck-name");
+  const button = form?.querySelector<HTMLButtonElement>("button");
+  const status = document.querySelector<HTMLElement>(".deck-status");
+  const list = document.querySelector<HTMLUListElement>(".deck-list");
+
+  let userId: string | null = null;
+  let loading = false;
+  let saving = false;
+  let requestId = 0;
+
+  function setStatus(message: string) {
+    if (status) status.textContent = message;
+  }
+
+  function syncControls() {
+    const disabled = !userId || loading || saving;
+    if (input) input.disabled = disabled;
+    if (button) {
+      button.disabled = disabled;
+      button.textContent = saving ? "Creating…" : "Create deck";
+    }
+  }
+
+  function renderDecks(decks: Deck[]) {
+    list?.replaceChildren();
+
+    for (const deck of decks) {
+      const item = document.createElement("li");
+      item.className = "deck-card";
+
+      const heading = document.createElement("h2");
+      const link = document.createElement("a");
+      link.href = `/mtg/deck?id=${encodeURIComponent(deck.id)}`;
+      link.textContent = deck.name;
+      heading.append(link);
+
+      const detail = document.createElement("p");
+      const visibility =
+        deck.visibility.charAt(0).toUpperCase() + deck.visibility.slice(1);
+      detail.textContent = `Commander · ${visibility}`;
+
+      item.append(heading, detail);
+      list?.append(item);
+    }
+  }
+
+  async function loadDecks() {
+    const currentRequest = ++requestId;
+    loading = true;
+    userId = null;
+    list?.replaceChildren();
+    syncControls();
+    setStatus("Loading your decks…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+      if (sessionError) throw sessionError;
+
+      if (!session) {
+        setStatus(
+          "Sign in using the account menu to create and see your decks.",
+        );
+        return;
+      }
+
+      userId = session.user.id;
+
+      const { data, error } = await supabase
+        .from("decks")
+        .select("id, name, visibility, created_at")
+        .eq("user_id", userId)
+        .order("name", { ascending: true });
+
+      if (currentRequest !== requestId) return;
+      if (error) throw error;
+
+      const decks = (data ?? []) as Deck[];
+      renderDecks(decks);
+      setStatus(
+        decks.length
+          ? `${decks.length} ${decks.length === 1 ? "deck" : "decks"}.`
+          : "No decks yet. Create your first one above.",
+      );
+    } catch {
+      if (currentRequest === requestId) {
+        setStatus("Couldn’t load your decks. Refresh the page to try again.");
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        loading = false;
+        syncControls();
+      }
+    }
+  }
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!input || !userId || loading || saving) return;
+
+    const name = input.value.trim();
+    if (!name) {
+      setStatus("Enter a name for your deck.");
+      input.focus();
+      return;
+    }
+
+    const currentRequest = requestId;
+    const currentUserId = userId;
+    saving = true;
+    syncControls();
+    setStatus("Creating your private deck…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+      if (sessionError || session?.user.id !== currentUserId) {
+        throw new Error(
+          "Your sign-in changed. Refresh the page and try again.",
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("decks")
+        .insert({ name })
+        .select("id")
+        .single();
+
+      if (currentRequest !== requestId) return;
+      if (error) throw error;
+      if (!data) throw new Error("The deck could not be created.");
+
+      input.value = "";
+      await loadDecks();
+
+      if (userId === currentUserId) {
+        setStatus(`Created “${name}”. Its visibility is Private.`);
+      }
+    } catch (error) {
+      if (currentRequest === requestId) {
+        setStatus(
+          error instanceof Error
+            ? error.message
+            : "Couldn’t create your deck. Please try again.",
+        );
+      }
+    } finally {
+      saving = false;
+      syncControls();
+    }
+  });
+
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+      window.setTimeout(() => void loadDecks(), 0);
+    }
+  });
+
+  void loadDecks();
+</script>
+
+<style>
+  .deck-back {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+  }
+
+  .deck-back:hover {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .deck-create {
+    padding: 1.25rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  .deck-create label {
+    display: block;
+    margin-bottom: 0.75rem;
+    color: var(--color-brand-text);
+    font-weight: 600;
+  }
+
+  .deck-create-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .deck-create input {
+    flex: 1 1 15rem;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .deck-create button {
+    min-height: 44px;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .deck-create button:hover:not(:disabled) {
+    background: var(--color-pyroduck-lime);
+  }
+
+  .deck-create button:disabled,
+  .deck-create input:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .deck-back:focus-visible,
+  .deck-create input:focus-visible,
+  .deck-create button:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .deck-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .deck-list :global(.deck-card) {
+    padding: 1.25rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    overflow-wrap: anywhere;
+  }
+
+  .deck-list :global(h2) {
+    margin: 0;
+    color: var(--color-brand-text);
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .deck-list :global(p) {
+    margin: 0.75rem 0 0;
+    color: var(--color-pyroduck-lime);
+    font-size: 0.875rem;
+  }
+</style>
