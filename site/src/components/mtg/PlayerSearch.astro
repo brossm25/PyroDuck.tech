@@ -1,0 +1,269 @@
+<section
+  aria-labelledby="player-search-heading"
+  class="rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
+>
+  <h2
+    id="player-search-heading"
+    class="text-2xl font-bold text-brand-text sm:text-3xl"
+  >
+    Find a player.
+  </h2>
+
+  <p class="mt-3 text-brand-muted">
+    Sign in and search a friend’s username. Enter at least 3 characters.
+  </p>
+
+  <form class="player-search-form mt-6">
+    <div class="player-search-field">
+      <label for="player-search-query" class="sr-only"> Player username </label>
+
+      <input
+        id="player-search-query"
+        name="username"
+        type="search"
+        required
+        minlength="3"
+        maxlength="24"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="Search by username"
+        class="player-search-input"
+      />
+    </div>
+
+    <button type="submit" class="player-search-button"> Search players </button>
+  </form>
+
+  <p class="player-search-status mt-4 text-brand-muted" role="status"></p>
+
+  <ul class="player-search-results"></ul>
+
+  <p class="mt-5 text-sm text-brand-muted">
+    Player search shows usernames and display names. Shared chase lists and
+    friend requests are coming next.
+  </p>
+</section>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Player {
+    id: string;
+    username: string;
+    display_name: string;
+  }
+
+  const form = document.querySelector<HTMLFormElement>(".player-search-form");
+  const input = document.querySelector<HTMLInputElement>(
+    "#player-search-query",
+  );
+  const button = document.querySelector<HTMLButtonElement>(
+    ".player-search-button",
+  );
+  const status = document.querySelector<HTMLElement>(".player-search-status");
+  const results = document.querySelector<HTMLUListElement>(
+    ".player-search-results",
+  );
+
+  let searching = false;
+  let requestId = 0;
+
+  function setStatus(message: string) {
+    if (status) status.textContent = message;
+  }
+
+  function resetSearch() {
+    requestId++;
+    searching = false;
+
+    if (button) button.disabled = false;
+    results?.replaceChildren();
+    setStatus("");
+  }
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!input || !results || searching) return;
+
+    const query = input.value.trim().toLowerCase().replace(/^@/, "");
+    input.value = query;
+
+    if (query.length < 3 || query.length > 24) {
+      setStatus("Enter between 3 and 24 characters.");
+      return;
+    }
+
+    const currentRequest = ++requestId;
+    searching = true;
+
+    if (button) button.disabled = true;
+    results.replaceChildren();
+    setStatus("Searching for players…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+
+      if (sessionError) {
+        setStatus("Couldn’t check your sign-in. Please try again.");
+        return;
+      }
+
+      if (!session) {
+        setStatus("Sign in using the menu above to search for players.");
+        return;
+      }
+
+      const { data, error } = await supabase.rpc("search_players", {
+        search_query: query,
+      });
+
+      if (currentRequest !== requestId) return;
+
+      if (error) {
+        setStatus(`Couldn’t search for players: ${error.message}`);
+        return;
+      }
+
+      const players = (data ?? []) as Player[];
+
+      if (players.length === 0) {
+        setStatus(
+          "No other players found. Check the username. Your own profile isn’t included.",
+        );
+        return;
+      }
+
+      for (const player of players) {
+        const item = document.createElement("li");
+        item.className = "player-result";
+
+        const name = document.createElement("p");
+        name.className = "player-result-name";
+        name.textContent = player.display_name;
+
+        const username = document.createElement("p");
+        username.className = "player-result-username";
+        username.textContent = `@${player.username}`;
+
+        item.append(name, username);
+        results.append(item);
+      }
+
+      setStatus(
+        `Found ${players.length} ${players.length === 1 ? "player" : "players"}.` +
+          (players.length === 20
+            ? " Enter more of the username to narrow your results."
+            : ""),
+      );
+    } catch {
+      if (currentRequest === requestId) {
+        setStatus("Player search couldn’t load. Please try again.");
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        searching = false;
+        if (button) button.disabled = false;
+      }
+    }
+  });
+
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT" || event === "SIGNED_IN") {
+      resetSearch();
+    }
+  });
+</script>
+
+<style>
+  .player-search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .player-search-field {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+
+  .player-search-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 45%, transparent);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .player-search-button {
+    min-height: 44px;
+    padding: 0.75rem 1.25rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .player-search-button:hover {
+    background: var(--color-pyroduck-lime);
+  }
+
+  .player-search-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .player-search-input:focus-visible,
+  .player-search-button:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .player-search-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .player-search-results:not(:empty) {
+    margin-top: 1.5rem;
+  }
+
+  .player-search-results :global(.player-result) {
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+    overflow-wrap: anywhere;
+  }
+
+  .player-search-results :global(.player-result-name) {
+    margin: 0;
+    color: var(--color-pyroduck-lime);
+    font-weight: 600;
+  }
+
+  .player-search-results :global(.player-result-username) {
+    margin: 0.25rem 0 0;
+    color: var(--color-brand-muted);
+  }
+</style>

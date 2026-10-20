@@ -2,7 +2,6 @@
 import Layout from "@/layouts/Layout.astro";
 import CardSearch from "@/components/mtg/CardSearch.astro";
 import ChaseList from "@/components/mtg/ChaseList.astro";
-import UserProfile from "@/components/mtg/UserProfile.astro";
 ---
 
 <Layout
@@ -38,14 +37,11 @@ import UserProfile from "@/components/mtg/UserProfile.astro";
     </div>
   </section>
 
-  <section class="px-6 pb-8 sm:pb-12">
-    <div class="mx-auto max-w-5xl">
-      <div class="space-y-8">
-        <UserProfile />
-        <ChaseList />
-      </div>
+  <div class="px-6 pb-8 sm:pb-12">
+    <div class="mx-auto max-w-5xl space-y-8">
+      <ChaseList />
     </div>
-  </section>
+  </div>
 
   <section
     id="card-hunt"
