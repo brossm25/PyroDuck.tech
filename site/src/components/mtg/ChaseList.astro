@@ -11,11 +11,7 @@
       Your chase list.
     </h2>
 
-    <button
-      type="button"
-      class="chase-refresh"
-      disabled
-    >
+    <button type="button" class="chase-refresh" disabled>
       Refresh prices
     </button>
   </div>
@@ -27,18 +23,43 @@
 
   <p class="chase-list-status mt-4 text-brand-muted" role="status"></p>
 
-  <p
-    class="chase-list-total mt-3 text-xl font-bold text-pyroduck-lime"
-  ></p>
+  <p class="chase-list-total mt-3 text-xl font-bold text-pyroduck-lime"></p>
 
   <p class="chase-list-total-note mt-2 text-sm text-brand-muted"></p>
 
   <p class="chase-price-status mt-3 text-sm text-brand-muted" role="status"></p>
 
+  <nav
+    class="chase-letter-nav mt-6"
+    aria-label="Jump to a chase-list letter"
+    hidden
+  >
+    <p class="chase-letter-label">Jump to a letter</p>
+    <div class="chase-letter-links"></div>
+  </nav>
+
   <ul
-    class="chase-list-items mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-  ></ul>
+    class="chase-list-items mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+  >
+  </ul>
 </section>
+
+<dialog class="chase-preview" aria-labelledby="chase-preview-title">
+  <div class="chase-preview-content">
+    <button
+      type="button"
+      class="chase-preview-close"
+      aria-label="Close card preview"
+      autofocus>×</button
+    >
+    <h2 id="chase-preview-title" class="chase-preview-title"></h2>
+    <img class="chase-preview-image" alt="" width="488" height="680" />
+    <p class="chase-preview-meta"></p>
+    <p class="chase-preview-error" role="status" hidden>
+      Image unavailable. Please close the preview and try again.
+    </p>
+  </div>
+</dialog>
 
 <script>
   import { supabase } from "@/lib/supabase";
@@ -69,14 +90,76 @@
 
   const list = document.querySelector<HTMLUListElement>(".chase-list-items");
   const status = document.querySelector<HTMLElement>(".chase-list-status");
-  const priceStatus =
-    document.querySelector<HTMLElement>(".chase-price-status");
-  const totalElement =
-    document.querySelector<HTMLElement>(".chase-list-total");
-  const totalNote =
-    document.querySelector<HTMLElement>(".chase-list-total-note");
+  const priceStatus = document.querySelector<HTMLElement>(
+    ".chase-price-status",
+  );
+  const totalElement = document.querySelector<HTMLElement>(".chase-list-total");
+  const totalNote = document.querySelector<HTMLElement>(
+    ".chase-list-total-note",
+  );
   const refreshButton =
     document.querySelector<HTMLButtonElement>(".chase-refresh");
+
+  const preview = document.querySelector<HTMLDialogElement>(".chase-preview");
+  const previewImage = document.querySelector<HTMLImageElement>(
+    ".chase-preview-image",
+  );
+  const previewTitle = document.querySelector<HTMLElement>(
+    ".chase-preview-title",
+  );
+  const previewMeta = document.querySelector<HTMLElement>(
+    ".chase-preview-meta",
+  );
+  const previewError = document.querySelector<HTMLElement>(
+    ".chase-preview-error",
+  );
+  let previewCardId: string | undefined;
+  let previewOpener: HTMLButtonElement | undefined;
+
+  function openPreview(card: ChaseCard, opener: HTMLButtonElement) {
+    if (!preview || !previewImage || !card.image_url) return;
+    previewCardId = card.id;
+    previewOpener = opener;
+    if (previewTitle) previewTitle.textContent = card.name;
+    if (previewMeta)
+      previewMeta.textContent = `${card.set_name} #${card.collector_number} · ${finishLabel(card.finish)}`;
+    if (previewError) previewError.hidden = true;
+    previewImage.hidden = false;
+    previewImage.alt = card.name;
+    previewImage.src = card.image_url;
+    if (!preview.open) preview.showModal();
+  }
+
+  previewImage?.addEventListener("error", () => {
+    previewImage.hidden = true;
+    if (previewError) previewError.hidden = false;
+  });
+
+  document
+    .querySelector<HTMLButtonElement>(".chase-preview-close")
+    ?.addEventListener("click", () => preview?.close());
+
+  let backdropPress = false;
+  preview?.addEventListener("pointerdown", (event) => {
+    backdropPress = event.target === preview;
+  });
+  preview?.addEventListener("click", (event) => {
+    if (backdropPress && event.target === preview) preview.close();
+    backdropPress = false;
+  });
+  preview?.addEventListener("close", () => {
+    const matchingButton = Array.from(
+      list?.querySelectorAll<HTMLButtonElement>(".chase-card-preview") ?? [],
+    ).find((button) => button.dataset.cardId === previewCardId);
+    const target =
+      matchingButton ??
+      (previewOpener?.isConnected ? previewOpener : undefined);
+    (
+      target ?? document.querySelector<HTMLElement>("#chase-list-heading")
+    )?.focus({ preventScroll: true });
+    previewCardId = undefined;
+    previewOpener = undefined;
+  });
 
   const usdFormatter = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -90,6 +173,81 @@
     hour: "numeric",
     minute: "2-digit",
   });
+
+  const letterNav = document.querySelector<HTMLElement>(".chase-letter-nav");
+  const letterLinks = document.querySelector<HTMLElement>(
+    ".chase-letter-links",
+  );
+  const nameSorter = new Intl.Collator("en", {
+    sensitivity: "base",
+    numeric: true,
+  });
+  const alphabet = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+
+  function cardLetter(name: string) {
+    const first = name
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .charAt(0)
+      .toUpperCase();
+    return /^[A-Z]$/.test(first) ? first : "#";
+  }
+
+  function compareCards(a: ChaseCard, b: ChaseCard) {
+    return (
+      alphabet.indexOf(cardLetter(a.name)) -
+        alphabet.indexOf(cardLetter(b.name)) ||
+      nameSorter.compare(a.name, b.name) ||
+      nameSorter.compare(a.set_name, b.set_name) ||
+      nameSorter.compare(a.collector_number, b.collector_number) ||
+      nameSorter.compare(a.finish, b.finish) ||
+      nameSorter.compare(a.id, b.id)
+    );
+  }
+
+  function letterId(letter: string) {
+    return `chase-letter-${letter === "#" ? "other" : letter.toLowerCase()}`;
+  }
+
+  function renderLetterNav() {
+    if (!letterNav || !letterLinks) return;
+    letterLinks.replaceChildren();
+    letterNav.hidden = cards.length === 0;
+    const available = new Set(cards.map((card) => cardLetter(card.name)));
+
+    for (const letter of alphabet) {
+      if (available.has(letter)) {
+        const link = document.createElement("a");
+        link.href = `#${letterId(letter)}`;
+        link.textContent = letter;
+        link.setAttribute(
+          "aria-label",
+          `Jump to ${letter === "#" ? "numbers and symbols" : letter}`,
+        );
+        link.addEventListener("click", (event) => {
+          const heading = document.getElementById(letterId(letter));
+          if (!heading) return;
+          event.preventDefault();
+          heading.focus({ preventScroll: true });
+          heading.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+              .matches
+              ? "instant"
+              : "smooth",
+            block: "start",
+          });
+        });
+        letterLinks.append(link);
+      } else {
+        const unavailable = document.createElement("span");
+        unavailable.textContent = letter;
+        unavailable.setAttribute("aria-disabled", "true");
+        unavailable.setAttribute("aria-label", `No cards under ${letter}`);
+        letterLinks.append(unavailable);
+      }
+    }
+  }
 
   const refreshAge = 24 * 60 * 60 * 1000;
 
@@ -156,9 +314,7 @@
 
     if (refreshButton) {
       refreshButton.disabled = busy || !signedIn || cards.length === 0;
-      refreshButton.textContent = refreshing
-        ? "Refreshing…"
-        : "Refresh prices";
+      refreshButton.textContent = refreshing ? "Refreshing…" : "Refresh prices";
     }
 
     list
@@ -203,9 +359,9 @@
       totalElement.textContent =
         missing === cards.length
           ? "Total chase-list estimate: unavailable"
-          : `Total chase-list estimate: ${
-              usdFormatter.format(totalCents / 100)
-            } USD`;
+          : `Total chase-list estimate: ${usdFormatter.format(
+              totalCents / 100,
+            )} USD`;
     }
 
     const notes = ["One copy per saved entry."];
@@ -228,9 +384,7 @@
       notes.push(
         `${missing} ${
           missing === 1 ? "entry has" : "entries have"
-        } no available price and ${
-          missing === 1 ? "is" : "are"
-        } excluded.`,
+        } no available price and ${missing === 1 ? "is" : "are"} excluded.`,
       );
     }
 
@@ -239,11 +393,7 @@
     if (totalNote) totalNote.textContent = notes.join(" ");
   }
 
-  function addText(
-    parent: HTMLElement,
-    className: string,
-    text: string,
-  ) {
+  function addText(parent: HTMLElement, className: string, text: string) {
     const paragraph = document.createElement("p");
     paragraph.className = className;
     paragraph.textContent = text;
@@ -255,6 +405,7 @@
 
     list.replaceChildren();
     renderTotal();
+    renderLetterNav();
 
     setStatus(
       cards.length === 0
@@ -262,7 +413,20 @@
         : `${cards.length} saved ${cards.length === 1 ? "card" : "cards"}.`,
     );
 
-    for (const card of cards) {
+    let previousLetter = "";
+    for (const card of [...cards].sort(compareCards)) {
+      const letter = cardLetter(card.name);
+      if (letter !== previousLetter) {
+        const divider = document.createElement("li");
+        divider.className = "chase-letter-divider";
+        const heading = document.createElement("h3");
+        heading.id = letterId(letter);
+        heading.tabIndex = -1;
+        heading.textContent = letter;
+        divider.append(heading);
+        list.append(divider);
+        previousLetter = letter;
+      }
       const item = document.createElement("li");
       item.className = "chase-list-card";
 
@@ -273,7 +437,20 @@
         image.loading = "lazy";
         image.width = 488;
         image.height = 680;
-        item.append(image);
+        const imageButton = document.createElement("button");
+        imageButton.type = "button";
+        imageButton.className = "chase-card-preview";
+        imageButton.dataset.cardId = card.id;
+        imageButton.setAttribute("aria-haspopup", "dialog");
+        imageButton.setAttribute(
+          "aria-label",
+          `Enlarge ${card.name}, ${card.set_name} #${card.collector_number}, ${finishLabel(card.finish)}`,
+        );
+        imageButton.addEventListener("click", () =>
+          openPreview(card, imageButton),
+        );
+        imageButton.append(image);
+        item.append(imageButton);
       }
 
       const title = document.createElement("p");
@@ -319,34 +496,7 @@
         );
       }
 
-      addText(
-        item,
-        "chase-list-meta",
-        original === null
-          ? "No original price recorded."
-          : `Price when saved: ${usdFormatter.format(original)} USD`,
-      );
-
-      if (
-        card.current_price_checked_at &&
-        current !== null &&
-        original !== null
-      ) {
-        const differenceCents =
-          Math.round(current * 100) - Math.round(original * 100);
-
-        const change =
-          differenceCents === 0
-            ? "Unchanged since saved."
-            : `${differenceCents > 0 ? "Up" : "Down"} ${
-                usdFormatter.format(Math.abs(differenceCents) / 100)
-              } since saved.`;
-
-        addText(item, "chase-list-change", change);
-      }
-
-      const checkedAt =
-        card.current_price_checked_at ?? card.price_checked_at;
+      const checkedAt = card.current_price_checked_at ?? card.price_checked_at;
 
       if (checkedAt) {
         const date = new Date(checkedAt);
@@ -420,9 +570,7 @@
       for (const [index, card] of pending.entries()) {
         if (controller.signal.aborted || activeRequest !== requestId) return;
 
-        setPriceStatus(
-          `Checking prices ${index + 1} of ${pending.length}…`,
-        );
+        setPriceStatus(`Checking prices ${index + 1} of ${pending.length}…`);
 
         // Space requests instead of fetching every card at once.
         await new Promise((resolve) => window.setTimeout(resolve, 150));
@@ -434,7 +582,9 @@
 
         try {
           if (!card.scryfall_id) {
-            throw new Error("A saved card is missing its Scryfall printing ID.");
+            throw new Error(
+              "A saved card is missing its Scryfall printing ID.",
+            );
           }
 
           const response = await fetch(
@@ -612,6 +762,7 @@
     refreshController?.abort();
     loading = true;
     clearTotal();
+    if (letterNav) letterNav.hidden = true;
     setPriceStatus("");
     syncButtons();
 
@@ -627,7 +778,7 @@
 
       signedIn = Boolean(session) && !sessionError;
 
-      if (!signedIn) {
+      if (sessionError || !session) {
         cards = [];
         list.replaceChildren();
         setStatus(
@@ -645,7 +796,8 @@
         .select(
           "id, scryfall_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at",
         )
-        .order("created_at", { ascending: false });
+        .eq("user_id", session.user.id)
+        .order("name", { ascending: true });
 
       if (activeRequest !== requestId) return;
 
@@ -698,6 +850,182 @@
 </script>
 
 <style>
+  .chase-list-items :global(.chase-card-preview) {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0.75rem;
+    background: transparent;
+    cursor: zoom-in;
+  }
+
+  .chase-list-items :global(.chase-card-preview:hover) {
+    box-shadow: 0 0 0 2px var(--color-pyroduck-plasma);
+  }
+
+  .chase-list-items :global(.chase-card-preview:focus-visible),
+  .chase-preview-close:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .chase-preview {
+    box-sizing: border-box;
+    width: min(600px, calc(100vw - 2rem));
+    max-width: none;
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+    box-shadow: 0 0 40px
+      color-mix(in srgb, var(--color-pyroduck-plasma) 20%, transparent);
+  }
+
+  .chase-preview::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .chase-preview-content {
+    position: relative;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .chase-preview-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 50%;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+
+  .chase-preview-close:hover {
+    color: var(--color-pyroduck-lime);
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .chase-preview-title {
+    margin: 0 3rem 1rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .chase-preview-image {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 72dvh;
+    margin-inline: auto;
+    border-radius: 0.75rem;
+    object-fit: contain;
+  }
+
+  .chase-preview-image[hidden],
+  .chase-preview-error[hidden] {
+    display: none;
+  }
+
+  .chase-preview-meta,
+  .chase-preview-error {
+    margin: 1rem 0 0;
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+  }
+
+  .chase-letter-nav[hidden] {
+    display: none;
+  }
+
+  .chase-letter-label {
+    margin: 0 0 0.75rem;
+    text-align: center;
+    color: var(--color-brand-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .chase-letter-links {
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 578px;
+    margin-inline: auto;
+    padding: 1rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-void);
+  }
+
+  .chase-letter-links :global(a),
+  .chase-letter-links :global(span) {
+    display: grid;
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 40%, transparent);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-pyroduck-plasma);
+    font-weight: 700;
+    text-decoration: none;
+    flex: 0 0 44px;
+  }
+
+  .chase-letter-links :global(span) {
+    color: var(--color-brand-muted);
+    opacity: 0.3;
+  }
+
+  .chase-letter-links :global(a:hover) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .chase-letter-links :global(a:focus-visible),
+  .chase-list-items :global(.chase-letter-divider h3:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 4px;
+  }
+
+  .chase-list-items :global(.chase-letter-divider) {
+    grid-column: 1 / -1;
+    list-style: none;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    padding-bottom: 0.5rem;
+  }
+
+  .chase-list-items :global(.chase-letter-divider h3) {
+    margin: 0;
+    width: fit-content;
+    scroll-margin-top: 8rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
   .chase-refresh {
     min-height: 44px;
     padding: 0.6rem 1rem;

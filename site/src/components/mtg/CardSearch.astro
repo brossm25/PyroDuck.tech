@@ -10,11 +10,15 @@
         id="card-query"
         name="query"
         type="search"
+        list="card-name-suggestions"
+        autocomplete="off"
+        aria-describedby="card-search-help"
         required
         maxlength="100"
         placeholder="Try Chromatic Lantern"
         class="w-full rounded-lg border border-pyroduck-plasma/40 bg-pyroduck-afterdark px-4 py-3 text-brand-text focus-visible:outline-2 focus-visible:outline-pyroduck-lime"
       />
+      <datalist id="card-name-suggestions"></datalist>
     </div>
 
     <button
@@ -25,13 +29,19 @@
     </button>
   </form>
 
+  <p id="card-search-help" class="mt-3 text-sm text-brand-muted">
+    Type at least two characters for card-name suggestions, then select a name
+    or press Search.
+  </p>
+
   <p class="search-status mt-4 text-brand-muted" role="status"></p>
 
   <ul
     class="search-results mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3 lg:grid-cols-4"
-  ></ul>
+  >
+  </ul>
 
-  <p class="mt-6 text-sm text-brand-muted">
+    <p class="mt-3 text-sm text-brand-muted">
     Card information, images, and price estimates provided by{" "}
     <a
       href="https://scryfall.com"
@@ -72,9 +82,8 @@
   </button>
 
   <p class="mt-4 text-sm text-brand-muted">
-    Saves this printing, finish, and available USD price estimate to your
-    chase list when you’re signed in. The saved price does not update
-    automatically.
+    Saves this printing, finish, and available USD price estimate to your chase
+    list when you’re signed in. The saved price does not update automatically.
   </p>
 </dialog>
 
@@ -116,10 +125,71 @@
     document.querySelector<HTMLImageElement>(".printing-image");
   const printingStatus =
     document.querySelector<HTMLElement>(".printing-status");
-  const printingPrice =
-    document.querySelector<HTMLElement>(".printing-price");
+  const printingPrice = document.querySelector<HTMLElement>(".printing-price");
   const confirmButton =
     document.querySelector<HTMLButtonElement>(".printing-confirm");
+
+  const queryInput = document.querySelector<HTMLInputElement>("#card-query");
+  const suggestions = document.querySelector<HTMLDataListElement>(
+    "#card-name-suggestions",
+  );
+  let suggestionTimer: number | undefined;
+  let suggestionRequest: AbortController | undefined;
+  let suggestionVersion = 0;
+  let searchRequest: AbortController | undefined;
+
+  function clearSuggestions() {
+    window.clearTimeout(suggestionTimer);
+    suggestionRequest?.abort();
+    suggestionVersion++;
+    suggestions?.replaceChildren();
+  }
+
+  queryInput?.addEventListener("input", () => {
+    clearSuggestions();
+    const query = queryInput.value.trim();
+    if (query.length < 2 || !suggestions) return;
+    const version = suggestionVersion;
+
+    suggestionTimer = window.setTimeout(async () => {
+      const controller = new AbortController();
+      suggestionRequest = controller;
+      try {
+        const endpoint = new URL("https://api.scryfall.com/cards/autocomplete");
+        endpoint.searchParams.set("q", query);
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const payload: { data?: unknown } = await response.json();
+        if (
+          controller.signal.aborted ||
+          version !== suggestionVersion ||
+          queryInput.value.trim() !== query
+        )
+          return;
+        if (!Array.isArray(payload.data)) return;
+        for (const name of payload.data.slice(0, 10)) {
+          if (typeof name === "string")
+            suggestions.append(new Option(name, name));
+        }
+      } catch {
+        // Suggestions are optional; the regular Search button still works.
+      }
+    }, 300);
+  });
+
+  queryInput?.addEventListener("change", () => {
+    if (
+      suggestions &&
+      Array.from(suggestions.options).some(
+        (option) => option.value === queryInput.value,
+      )
+    ) {
+      form?.requestSubmit();
+    }
+  });
 
   const usdFormatter = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -368,8 +438,16 @@
         `Saved: ${card.name} — ${card.set_name} ` +
         `#${card.collector_number}, ${finishLabel(finish)}.`;
 
+      searchRequest?.abort();
+      clearSuggestions();
+      form?.reset();
+      if (queryInput) queryInput.value = "";
+      results?.replaceChildren();
       window.dispatchEvent(new Event("chase-cards-changed"));
       dialog?.close();
+      window.requestAnimationFrame(() =>
+        queryInput?.focus({ preventScroll: true }),
+      );
     } catch (error) {
       const message =
         error instanceof Error
@@ -396,6 +474,10 @@
       const query = String(new FormData(form).get("query") ?? "").trim();
       if (!query) return;
 
+      clearSuggestions();
+      searchRequest?.abort();
+      const controller = new AbortController();
+      searchRequest = controller;
       results.replaceChildren();
       status.textContent = "Searching…";
       if (button) button.disabled = true;
@@ -408,6 +490,7 @@
 
         const response = await fetch(endpoint, {
           headers: { Accept: "application/json" },
+          signal: controller.signal,
         });
 
         if (response.status === 404) {
@@ -418,6 +501,7 @@
         if (!response.ok) throw new Error("Search unavailable");
 
         const data: CardPage = await response.json();
+        if (controller.signal.aborted) return;
         const cards = data.data.slice(0, 12);
 
         for (const card of cards) {
@@ -468,7 +552,9 @@
             ? " Narrow your search for more specific results."
             : "");
       } catch {
-        status.textContent = "Search couldn’t load. Please try again shortly.";
+        if (!controller.signal.aborted)
+          status.textContent =
+            "Search couldn’t load. Please try again shortly.";
       } finally {
         if (button) button.disabled = false;
       }

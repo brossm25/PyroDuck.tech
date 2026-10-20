@@ -8,7 +8,10 @@ import ChaseList from "@/components/mtg/ChaseList.astro";
   title="Ducky's MTG Corner"
   description="Explore Ducky's Magic: The Gathering card hunt, favorite artwork, and journey replacing proxies with collected cards."
 >
-  <section aria-labelledby="mtg-heading" class="mtg-hero px-6 py-16 sm:py-24">
+  <section
+    aria-labelledby="mtg-heading"
+    class="mtg-hero px-6 pt-16 pb-6 sm:pt-24 sm:pb-8"
+  >
     <div class="mx-auto max-w-5xl">
       <a
         href="/#about"
@@ -34,44 +37,18 @@ import ChaseList from "@/components/mtg/ChaseList.astro";
         A little space for Magic: The Gathering—building decks, enjoying the
         artwork, and gradually replacing my proxies with cards I want to own.
       </p>
-    </div>
-  </section>
 
-  <div class="px-6 pb-8 sm:pb-12">
-    <div class="mx-auto max-w-5xl space-y-8">
-      <ChaseList />
-    </div>
-  </div>
-
-  <section
-    id="card-hunt"
-    aria-labelledby="hunt-heading"
-    class="scroll-mt-32 px-6 pb-16 sm:pb-24"
-  >
-    <div class="mx-auto max-w-5xl">
-      <p
-        class="mb-3 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
-      >
-        On the lookout
-      </p>
-
-      <h2
-        id="hunt-heading"
-        class="text-3xl font-bold text-brand-text sm:text-4xl"
-      >
-        The card hunt.
-      </h2>
-
-      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-brand-muted">
-        The cards, artwork, and finishes I'm looking for as I build my
-        collection, one card at a time.
-      </p>
-
-      <div class="mt-10">
+      <div id="card-hunt" class="mt-10 scroll-mt-32">
         <CardSearch />
       </div>
     </div>
   </section>
+
+  <div class="px-6 pb-16 sm:pb-24">
+    <div class="mx-auto max-w-5xl">
+      <ChaseList />
+    </div>
+  </div>
 </Layout>
 
 <style>
