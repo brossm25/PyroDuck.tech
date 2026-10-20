@@ -4,8 +4,10 @@ import CircuitLine from "@/components/CircuitLine.astro";
 import AccountMenu from "@/components/AccountMenu.astro";
 import UserProfile from "@/components/mtg/UserProfile.astro";
 import PlayerSearch from "@/components/mtg/PlayerSearch.astro";
+import FriendsMenu from "@/components/mtg/FriendsMenu.astro";
 
-const isMtgPage = Astro.url.pathname.replace(/\/+$/, "") === "/mtg";
+const pathname = Astro.url.pathname;
+const isMtgPage = pathname === "/mtg" || pathname.startsWith("/mtg/");
 
 const navigation = [
   { label: "Work", href: "/#work" },
@@ -18,6 +20,7 @@ const navigation = [
   <div
     class="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:flex sm:gap-4 sm:px-6 lg:px-8"
   >
+    <!-- Logo -->
     <a
       href="/"
       class="col-start-1 row-start-1 justify-self-start rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime sm:shrink-0"
@@ -32,6 +35,7 @@ const navigation = [
       />
     </a>
 
+    <!-- Site name -->
     <a
       href="/"
       class="col-start-2 row-start-1 rounded-lg text-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
@@ -91,22 +95,14 @@ const navigation = [
                 Find a player
               </button>
 
-              <details class="friends-menu">
-                <summary class="header-link friends-trigger">
-                  Friends <span aria-hidden="true">⌄</span>
-                </summary>
+              <FriendsMenu />
 
-                <div class="friends-panel">
-                  <p>Friend requests and your friends list are coming next.</p>
-                </div>
-              </details>
+              <div class="mt-2 border-t border-pyroduck-plasma/20 pt-2">
+                <AccountMenu />
+              </div>
             </>
           )
         }
-
-        <div class="mt-2 border-t border-pyroduck-plasma/20 pt-2">
-          <AccountMenu />
-        </div>
       </nav>
     </details>
 
@@ -139,52 +135,45 @@ const navigation = [
               Find a player
             </button>
 
-            <details class="friends-menu">
-              <summary class="header-link friends-trigger">
-                Friends <span aria-hidden="true">⌄</span>
-              </summary>
-
-              <div class="friends-panel">
-                <p>Friend requests and your friends list are coming next.</p>
-              </div>
-            </details>
+            <FriendsMenu />
+            <AccountMenu />
           </>
         )
       }
-
-      <AccountMenu />
     </nav>
   </div>
 
   <CircuitLine />
 </header>
 
-<UserProfile />
-
 {
   isMtgPage && (
-    <dialog
-      id="header-player-search"
-      class="header-search-dialog"
-      aria-labelledby="card-player-search-title"
-    >
-      <div class="search-dialog-controls">
-        <h2 id="card-player-search-title" class="sr-only">
-          Search for a player
-        </h2>
+    <>
+      <UserProfile />
 
-        <button
-          type="button"
-          class="search-dialog-close"
-          aria-label="Close player search"
-          autofocus
-        >
-          ✕
-        </button>
-      </div>
+      <dialog
+        id="header-player-search"
+        class="header-search-dialog"
+        aria-labelledby="header-player-search-title"
+      >
+        <div class="search-dialog-controls">
+          <h2 id="header-player-search-title" class="sr-only">
+            Search for a player
+          </h2>
 
-      <PlayerSearch />
-    </dialog>
+          <button
+            type="button"
+            class="search-dialog-close"
+            aria-label="Close player search"
+            autofocus
+          >
+            ✕
+          </button>
+        </div>
+
+        <PlayerSearch />
+      </dialog>
+    </>
   )
 }
 
@@ -304,41 +293,6 @@ const navigation = [
     outline-offset: 3px;
   }
 
-  .friends-menu {
-    position: relative;
-  }
-
-  .friends-trigger {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    list-style: none;
-  }
-
-  .friends-trigger::-webkit-details-marker {
-    display: none;
-  }
-
-  .friends-menu[open] > summary span {
-    transform: rotate(180deg);
-  }
-
-  .friends-panel {
-    padding: 1rem;
-    border: 1px solid
-      color-mix(in srgb, var(--color-pyroduck-plasma) 35%, transparent);
-    border-radius: 0.75rem;
-    background: var(--color-pyroduck-void);
-    color: var(--color-brand-muted);
-    font-size: 0.875rem;
-    line-height: 1.6;
-  }
-
-  .friends-panel p {
-    margin: 0;
-  }
-
   .header-search-dialog {
     box-sizing: border-box;
     width: min(44rem, calc(100vw - 2rem));
@@ -388,16 +342,6 @@ const navigation = [
       padding: 0.5rem 0.65rem;
       white-space: nowrap;
       font-size: 1rem;
-    }
-
-    .friends-panel {
-      position: absolute;
-      right: 0;
-      top: 100%;
-      z-index: 60;
-      width: 16rem;
-      margin-top: 0.5rem;
-      box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
     }
   }
 

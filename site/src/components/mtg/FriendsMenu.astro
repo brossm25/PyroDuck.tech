@@ -1,0 +1,506 @@
+<details class="friends-menu">
+  <summary class="friends-trigger">
+    Friends
+    <span class="friends-count" hidden></span>
+    <span class="friends-chevron" aria-hidden="true">⌄</span>
+  </summary>
+
+  <div class="friends-panel">
+    <p class="friends-status" role="status"></p>
+    <div class="friends-content"></div>
+  </div>
+</details>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Friendship {
+    friendship_id: string;
+    requester_id: string;
+    recipient_id: string;
+    status: "pending" | "accepted";
+    created_at: string;
+    player_id: string;
+    username: string;
+    display_name: string;
+  }
+
+  const menus = Array.from(
+    document.querySelectorAll<HTMLDetailsElement>(".friends-menu"),
+  );
+
+  let friendships: Friendship[] = [];
+  let userId: string | null = null;
+  let loading = false;
+  let changing = false;
+  let requestId = 0;
+
+  function setStatus(message: string) {
+    menus.forEach((menu) => {
+      const status = menu.querySelector<HTMLElement>(".friends-status");
+
+      if (status) status.textContent = message;
+    });
+  }
+
+  function render() {
+    const incoming = friendships.filter(
+      (item) => item.status === "pending" && item.recipient_id === userId,
+    );
+
+    const outgoing = friendships.filter(
+      (item) => item.status === "pending" && item.requester_id === userId,
+    );
+
+    const accepted = friendships.filter((item) => item.status === "accepted");
+
+    menus.forEach((menu) => {
+      const count = menu.querySelector<HTMLElement>(".friends-count");
+      const content = menu.querySelector<HTMLElement>(".friends-content");
+
+      if (count) {
+        count.hidden = incoming.length === 0;
+        count.textContent = String(incoming.length);
+        count.setAttribute(
+          "aria-label",
+          `${incoming.length} incoming friend requests`,
+        );
+      }
+
+      if (!content) return;
+      content.replaceChildren();
+
+      if (!userId || loading) return;
+
+      function addGroup(title: string, items: Friendship[]) {
+        if (!items.length || !content) return;
+
+        const heading = document.createElement("h3");
+        heading.className = "friend-group-heading";
+        heading.textContent = `${title} (${items.length})`;
+
+        const list = document.createElement("ul");
+        list.className = "friend-group-list";
+
+        for (const item of items) {
+          const row = document.createElement("li");
+          row.className = "friend-row";
+
+          const name = document.createElement("p");
+          name.className = "friend-name";
+          name.textContent = item.display_name;
+
+          const username = document.createElement("p");
+          username.className = "friend-username";
+          username.textContent = `@${item.username}`;
+
+          const actions = document.createElement("div");
+          actions.className = "friend-actions";
+
+          function addButton(
+            label: string,
+            action: "accept" | "remove",
+            primary = false,
+          ) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = primary
+              ? "friend-button friend-button-primary"
+              : "friend-button";
+
+            button.textContent = label;
+            button.disabled = changing;
+            button.setAttribute("aria-label", `${label}: @${item.username}`);
+
+            button.addEventListener("click", () => {
+              void changeFriendship(item, action);
+            });
+
+            actions.append(button);
+          }
+
+          if (item.status === "accepted") {
+            addButton("Remove friend", "remove");
+          } else if (item.recipient_id === userId) {
+            addButton("Accept", "accept", true);
+            addButton("Decline", "remove");
+          } else {
+            addButton("Cancel request", "remove");
+          }
+
+          row.append(name, username, actions);
+          list.append(row);
+        }
+
+        content.append(heading, list);
+      }
+
+      addGroup("Incoming requests", incoming);
+      addGroup("Your friends", accepted);
+      addGroup("Sent requests", outgoing);
+
+      if (!friendships.length) {
+        const empty = document.createElement("p");
+        empty.className = "friend-empty";
+        empty.textContent = "No friends yet. Find a player to send a request.";
+
+        content.append(empty);
+      }
+    });
+  }
+
+  async function loadFriends() {
+    if (changing) return;
+
+    const currentRequest = ++requestId;
+
+    loading = true;
+    friendships = [];
+    userId = null;
+
+    render();
+    setStatus("Loading friends…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+      if (sessionError) throw sessionError;
+
+      if (!session) {
+        setStatus("Sign in to see friends and friend requests.");
+        return;
+      }
+
+      userId = session.user.id;
+
+      const { data, error } = await supabase.rpc("get_my_friendships");
+
+      if (currentRequest !== requestId) return;
+      if (error) throw error;
+
+      friendships = (data ?? []) as Friendship[];
+      setStatus("");
+    } catch {
+      if (currentRequest === requestId) {
+        setStatus(
+          "Couldn’t load friends. Close and reopen this menu to retry.",
+        );
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        loading = false;
+        render();
+      }
+    }
+  }
+
+  async function changeFriendship(
+    item: Friendship,
+    action: "accept" | "remove",
+  ) {
+    if (changing || loading || !userId) return;
+
+    if (
+      action === "remove" &&
+      item.status === "accepted" &&
+      !window.confirm(`Remove @${item.username} from your friends?`)
+    ) {
+      return;
+    }
+
+    const currentRequest = requestId;
+    const currentUserId = userId;
+    let succeeded = false;
+
+    changing = true;
+    render();
+
+    setStatus(action === "accept" ? "Accepting request…" : "Removing…");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (currentRequest !== requestId) return;
+
+      if (sessionError || session?.user.id !== currentUserId) {
+        throw new Error("Your sign-in changed. Reopen the menu.");
+      }
+
+      const result =
+        action === "accept"
+          ? await supabase
+              .from("friendships")
+              .update({ status: "accepted" })
+              .eq("id", item.friendship_id)
+              .eq("recipient_id", currentUserId)
+              .eq("status", "pending")
+              .select("id")
+          : await supabase
+              .from("friendships")
+              .delete()
+              .eq("id", item.friendship_id)
+              .select("id");
+
+      if (currentRequest !== requestId) return;
+      if (result.error) throw result.error;
+
+      if (!result.data?.length) {
+        throw new Error("This connection changed. Reopen the menu.");
+      }
+
+      succeeded = true;
+    } catch (error) {
+      if (currentRequest === requestId) {
+        setStatus(
+          typeof error === "object" &&
+            error !== null &&
+            "message" in error &&
+            typeof error.message === "string"
+            ? error.message
+            : "Couldn’t update this connection. Please try again.",
+        );
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        changing = false;
+        render();
+      }
+    }
+
+    if (succeeded && currentRequest === requestId) {
+      window.dispatchEvent(new Event("friendships-changed"));
+    }
+  }
+
+  menus.forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (menu.open && !changing) {
+        void loadFriends();
+      }
+    });
+  });
+
+  window.addEventListener("friendships-changed", () => {
+    void loadFriends();
+  });
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event === "SIGNED_OUT" ||
+      (event === "SIGNED_IN" && session?.user.id !== userId)
+    ) {
+      requestId++;
+      changing = false;
+      loading = false;
+      userId = null;
+      friendships = [];
+
+      render();
+      setStatus("Sign in to see friends and friend requests.");
+
+      window.setTimeout(() => {
+        void loadFriends();
+      }, 0);
+    }
+  });
+
+  void loadFriends();
+</script>
+
+<style>
+  [hidden] {
+    display: none !important;
+  }
+
+  .friends-menu {
+    position: relative;
+  }
+
+  .friends-trigger {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    color: var(--color-brand-text);
+    font-size: 1.125rem;
+    font-weight: 500;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .friends-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .friends-trigger:hover {
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .friends-trigger:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .friends-count {
+    min-width: 1.25rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-void);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .friends-chevron {
+    margin-left: auto;
+  }
+
+  .friends-menu[open] > summary .friends-chevron {
+    transform: rotate(180deg);
+  }
+
+  .friends-panel {
+    padding: 1rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 35%, transparent);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .friends-status {
+    margin: 0;
+  }
+
+  .friends-status:empty {
+    display: none;
+  }
+
+  .friends-content :global(.friend-group-heading) {
+    margin: 1rem 0 0.5rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .friends-content :global(.friend-group-heading:first-child) {
+    margin-top: 0;
+  }
+
+  .friends-content :global(.friend-group-list) {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .friends-content :global(.friend-row) {
+    padding: 0.75rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    overflow-wrap: anywhere;
+  }
+
+  .friends-content :global(.friend-name) {
+    margin: 0;
+    color: var(--color-brand-text);
+    font-weight: 600;
+  }
+
+  .friends-content :global(.friend-username) {
+    margin: 0.2rem 0 0;
+    color: var(--color-brand-muted);
+    font-size: 0.8rem;
+  }
+
+  .friends-content :global(.friend-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .friends-content :global(.friend-button) {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-brand-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .friends-content :global(.friend-button-primary) {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .friends-content :global(.friend-button:hover:not(:disabled)) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .friends-content :global(.friend-button-primary:hover:not(:disabled)) {
+    background: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-void);
+  }
+
+  .friends-content :global(.friend-button:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .friends-content :global(.friend-button:disabled) {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .friends-content :global(.friend-empty) {
+    margin: 0;
+  }
+
+  @media (min-width: 640px) {
+    .friends-trigger {
+      padding: 0.5rem 0.65rem;
+      font-size: 1rem;
+      white-space: nowrap;
+    }
+
+    .friends-panel {
+      position: absolute;
+      right: 0;
+      top: 100%;
+      z-index: 60;
+      width: min(21rem, calc(100vw - 2rem));
+      max-height: min(32rem, calc(100dvh - 9rem));
+      margin-top: 0.5rem;
+      overflow-y: auto;
+      box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .friends-trigger {
+      padding-inline: 0.85rem;
+      font-size: 1.125rem;
+    }
+  }
+</style>
