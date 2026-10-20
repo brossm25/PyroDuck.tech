@@ -4,6 +4,7 @@ import { site } from "@/data/site";
 
 import Header from "@/components/Header.astro";
 import Footer from "@/components/Footer.astro";
+import SecretDuck from "@/components/SecretDuck.astro";
 
 interface Props {
   title: string;
@@ -55,5 +56,6 @@ const socialImageURL = new URL(site.socialImage, site.url);
     </main>
 
     <Footer />
+    <SecretDuck />
   </body>
 </html>
