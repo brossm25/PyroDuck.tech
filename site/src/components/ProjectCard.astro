@@ -1,6 +1,6 @@
 ---
 import { Image } from "astro:assets";
-import type { Project } from "@/data/projects";
+import type { Project, ProjectScreenshot } from "@/data/projects";
 
 type Props = Project;
 
@@ -11,19 +11,24 @@ const {
   url,
   image,
   imageAlt,
+  before,
   gallery = [],
 } = Astro.props;
 
-const screenshots = image
-  ? [
-      {
-        image,
-        alt: imageAlt ?? `${name} website preview`,
-        label: "Desktop",
-      },
-      ...gallery,
-    ]
-  : [];
+const screenshots: ProjectScreenshot[] = [
+  ...(before ? [before] : []),
+  ...(image
+    ? [
+        {
+          image,
+          alt: imageAlt ?? `${name} website preview`,
+          label: "Desktop",
+          description,
+        },
+      ]
+    : []),
+  ...gallery,
+];
 ---
 
 <article
@@ -84,6 +89,11 @@ const screenshots = image
                   loading="lazy"
                   class="preview-full"
                 />
+
+                <div class="gallery-caption">
+                  <h4>{screenshot.label}</h4>
+                  {screenshot.description && <p>{screenshot.description}</p>}
+                </div>
               </div>
             ))}
           </div>
@@ -337,5 +347,21 @@ const screenshots = image
     max-height: 70dvh;
     margin-inline: auto;
     object-fit: contain;
+  }
+  .gallery-caption {
+    max-width: 48rem;
+    margin: 1rem auto 0;
+  }
+
+  .gallery-caption h4 {
+    color: var(--color-brand-text);
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .gallery-caption p {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+    line-height: 1.7;
   }
 </style>
