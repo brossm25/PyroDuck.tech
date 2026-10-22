@@ -13,7 +13,7 @@ const navigation = [
   { label: "Work", href: "/#work" },
   { label: "About", href: "/#about" },
   { label: "Contact", href: "/#contact" },
-  ...(!isMtgPage ? [{ label: "MTG Corner", href: "/mtg" }] : []),
+  ...(!isMtgPage ? [{ label: "BinderLink", href: "/mtg" }] : []),
 ];
 ---
 
@@ -98,6 +98,14 @@ const navigation = [
 
               <FriendsMenu />
 
+              <a
+                href="/mtg/messages"
+                class="header-link"
+                aria-current={pathname === "/mtg/messages" ? "page" : undefined}
+              >
+                Messages
+              </a>
+
               <div class="mt-2 border-t border-pyroduck-plasma/20 pt-2">
                 <AccountMenu />
               </div>
@@ -137,6 +145,14 @@ const navigation = [
             </button>
 
             <FriendsMenu />
+
+            <a
+              href="/mtg/messages"
+              class="header-link"
+              aria-current={pathname === "/mtg/messages" ? "page" : undefined}
+            >
+              Messages
+            </a>
             <AccountMenu />
           </>
         )

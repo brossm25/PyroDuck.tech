@@ -5,8 +5,8 @@ import ChaseList from "@/components/mtg/ChaseList.astro";
 ---
 
 <Layout
-  title="Ducky's MTG Corner"
-  description="Explore Ducky's Magic: The Gathering card hunt, favorite artwork, and journey replacing proxies with collected cards."
+  title="BinderLink"
+  description="Build your Magic: The Gathering chase list, list cards for sale, and connect with other players on BinderLink."
 >
   <section
     aria-labelledby="mtg-heading"
@@ -14,28 +14,29 @@ import ChaseList from "@/components/mtg/ChaseList.astro";
   >
     <div class="mx-auto max-w-5xl">
       <a
-        href="/#about"
+        href="/"
         class="rounded-sm font-semibold text-pyroduck-plasma transition-colors hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
       >
-        ← Back to About me
+        ← PyroDuck Tech
       </a>
 
       <p
         class="mb-3 mt-10 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
       >
-        Beyond the code
+        Connect your collection. Find your next card.
       </p>
 
       <h1
         id="mtg-heading"
         class="text-4xl font-bold tracking-tight text-brand-text sm:text-6xl"
       >
-        Ducky's <span class="text-pyroduck-plasma">MTG Corner.</span>
+        Binder<span class="text-pyroduck-plasma">Link.</span>
       </h1>
 
       <p class="mt-6 max-w-2xl text-lg leading-relaxed text-brand-muted">
-        A little space for Magic: The Gathering—building decks, enjoying the
-        artwork, and gradually replacing my proxies with cards I want to own.
+        A place for Magic: The Gathering players to build chase lists, discover
+        cards for sale, and connect with other collectors. Find the cards you’re
+        looking for and help someone else find theirs.
       </p>
 
       <div class="mt-6 flex flex-wrap gap-3">
@@ -66,55 +67,3 @@ import ChaseList from "@/components/mtg/ChaseList.astro";
     </div>
   </div>
 </Layout>
-
-<style>
-  .mtg-hero {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    background: radial-gradient(
-      ellipse at 85% 50%,
-      color-mix(in srgb, var(--color-pyroduck-plasma) 14%, transparent),
-      transparent 65%
-    );
-  }
-
-  .mtg-hero::before,
-  .mtg-hero::after {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    top: 18%;
-    right: 8%;
-    width: clamp(160px, 20vw, 260px);
-    aspect-ratio: 5 / 7;
-    border: 1px solid
-      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
-    border-radius: 1rem;
-    background: linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--color-pyroduck-plasma) 6%, transparent),
-      transparent
-    );
-    pointer-events: none;
-    transform: rotate(14deg);
-  }
-
-  .mtg-hero::after {
-    right: 13%;
-    top: 23%;
-    transform: rotate(-10deg);
-  }
-
-  @media (max-width: 639px) {
-    .mtg-hero::before,
-    .mtg-hero::after {
-      opacity: 0.4;
-      right: -3rem;
-    }
-
-    .mtg-hero::after {
-      right: 0;
-    }
-  }
-</style>

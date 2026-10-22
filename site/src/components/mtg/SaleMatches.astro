@@ -1,0 +1,885 @@
+<section class="match-tools" aria-labelledby="sale-matches-heading">
+  <div class="match-header">
+    <h3 id="sale-matches-heading">Available matches</h3>
+    <button type="button" class="match-refresh" disabled>
+      Check matches
+    </button>
+  </div>
+
+  <p class="match-help">
+    Cards on your chase list offered by other players, including people outside
+    your friends list. Sets, artwork, and finishes may differ.
+  </p>
+
+  <p class="match-status" role="status" aria-live="polite">
+    Checking available listings…
+  </p>
+
+  <details class="match-results" hidden>
+    <summary class="match-summary">View matching listings</summary>
+    <ul class="match-list"></ul>
+  </details>
+
+  <details class="match-hidden-results" hidden>
+    <summary class="match-hidden-summary">Hidden matches</summary>
+    <p class="match-help">
+      Restore listings here. Hidden listings also return automatically when
+      their asking price drops. Only currently available listings matching your
+      chase list appear here.
+    </p>
+    <ul class="match-list match-hidden-list"></ul>
+  </details>
+
+  <dialog class="match-dialog" aria-labelledby="match-dialog-title">
+    <form method="dialog" class="match-close-row">
+      <button type="submit">Close ✕</button>
+    </form>
+
+    <h3 id="match-dialog-title">Sale listing</h3>
+    <p class="match-detail-status" role="status"></p>
+    <div class="match-detail-body"></div>
+  </dialog>
+</section>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface SaleMatch {
+    listing_id: string;
+    oracle_id: string;
+    card_name: string;
+    seller_username: string;
+    seller_display_name: string | null;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    condition: string;
+    asking_price_usd: string | number;
+    quantity: number;
+    image_url: string | null;
+    total_matches: string | number;
+  }
+
+  interface HiddenMatch {
+    listing_id: string;
+    hidden_price_usd: string | number;
+  }
+
+  interface SaleDetail extends Omit<SaleMatch, "oracle_id" | "total_matches"> {
+    notes: string;
+    front_photo_path: string | null;
+    back_photo_path: string | null;
+  }
+
+  const root = document.querySelector<HTMLElement>(".match-tools");
+
+  if (root) {
+    const refresh = root.querySelector<HTMLButtonElement>(".match-refresh")!;
+    const status = root.querySelector<HTMLElement>(".match-status")!;
+    const results = root.querySelector<HTMLDetailsElement>(".match-results")!;
+    const summary = root.querySelector<HTMLElement>(".match-summary")!;
+    const list = root.querySelector<HTMLUListElement>(".match-list")!;
+    const hiddenResults = root.querySelector<HTMLDetailsElement>(
+      ".match-hidden-results",
+    )!;
+    const hiddenSummary = root.querySelector<HTMLElement>(
+      ".match-hidden-summary",
+    )!;
+    const hiddenList =
+      root.querySelector<HTMLUListElement>(".match-hidden-list")!;
+
+    let hiddenMatches = new Map<string, HiddenMatch>();
+    let changingListing = false;
+    const dialog = root.querySelector<HTMLDialogElement>(".match-dialog")!;
+    const detailTitle = root.querySelector<HTMLElement>("#match-dialog-title")!;
+    const detailStatus = root.querySelector<HTMLElement>(
+      ".match-detail-status",
+    )!;
+    const detailBody = root.querySelector<HTMLElement>(".match-detail-body")!;
+
+    const money = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    let viewerId: string | null = null;
+    let version = 0;
+    let detailVersion = 0;
+    let refreshTimer: number | undefined;
+    let opener: HTMLButtonElement | null = null;
+
+    function message(error: unknown) {
+      return error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+        ? error.message
+        : "Please try again shortly.";
+    }
+
+    function finish(value: string) {
+      const labels: Record<string, string> = {
+        nonfoil: "Nonfoil",
+        foil: "Foil",
+        etched: "Etched foil",
+      };
+
+      return labels[value] ?? value;
+    }
+
+    function referenceUrl(value: string | null) {
+      if (!value) return null;
+
+      try {
+        const url = new URL(value);
+
+        return url.protocol === "https:" &&
+          (url.hostname === "cards.scryfall.io" ||
+            url.hostname.endsWith(".scryfall.io") ||
+            url.hostname.endsWith(".scryfall.com"))
+          ? url.href
+          : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function paragraph(parent: HTMLElement, text: string, className = "") {
+      const p = document.createElement("p");
+      p.textContent = text;
+      p.className = className;
+      parent.append(p);
+    }
+
+    function clearMatches() {
+      list.replaceChildren();
+      hiddenList.replaceChildren();
+      hiddenMatches.clear();
+
+      results.hidden = true;
+      hiddenResults.hidden = true;
+
+      detailBody.replaceChildren();
+      detailStatus.textContent = "";
+      dialog.close();
+      detailVersion++;
+    }
+
+    function scheduleRefresh() {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void loadMatches(), 80);
+    }
+    function renderMatches(matches: SaleMatch[]) {
+      list.replaceChildren();
+      hiddenList.replaceChildren();
+
+      const visible: SaleMatch[] = [];
+      const hidden: SaleMatch[] = [];
+
+      for (const match of matches) {
+        const saved = hiddenMatches.get(match.listing_id);
+        const priceDropped =
+          saved !== undefined &&
+          Number(match.asking_price_usd) < Number(saved.hidden_price_usd);
+
+        if (saved && !priceDropped) {
+          hidden.push(match);
+        } else {
+          visible.push(match);
+        }
+      }
+
+      results.hidden = visible.length === 0;
+      hiddenResults.hidden = hidden.length === 0;
+      summary.textContent = `View matching listings (${visible.length})`;
+      hiddenSummary.textContent = `Hidden matches (${hidden.length})`;
+
+      if (!visible.length) {
+        status.textContent = hidden.length
+          ? "No visible matches right now. You can review your hidden matches below."
+          : "No available sale matches right now. Check again as players add cards.";
+      } else {
+        const cards = new Set(visible.map((match) => match.oracle_id)).size;
+        const sellers = new Set(visible.map((match) => match.seller_username))
+          .size;
+
+        status.textContent = `${cards} ${
+          cards === 1
+            ? "card on your chase list has"
+            : "cards on your chase list have"
+        } available matches from ${sellers} ${
+          sellers === 1 ? "player" : "players"
+        }.`;
+      }
+
+      function addListing(
+        match: SaleMatch,
+        destination: HTMLUListElement,
+        isHidden: boolean,
+      ) {
+        const item = document.createElement("li");
+        const imageUrl = referenceUrl(match.image_url);
+
+        if (imageUrl) {
+          const image = document.createElement("img");
+          image.src = imageUrl;
+          image.alt =
+            `${match.card_name}, ${match.set_name} ` +
+            `#${match.collector_number}`;
+          image.loading = "lazy";
+          image.className = "match-thumb";
+          image.addEventListener("error", () => {
+            image.hidden = true;
+          });
+          item.append(image);
+        }
+
+        const info = document.createElement("div");
+        info.className = "match-info";
+
+        paragraph(info, match.card_name, "match-name");
+        paragraph(info, `Seller: @${match.seller_username}`, "match-seller");
+        paragraph(
+          info,
+          `${money.format(Number(match.asking_price_usd))} each · ` +
+            `${match.condition} · ${finish(match.finish)} · ` +
+            `${match.quantity} available`,
+        );
+        paragraph(info, `${match.set_name} #${match.collector_number}`);
+
+        const saved = hiddenMatches.get(match.listing_id);
+
+        if (
+          !isHidden &&
+          saved &&
+          Number(match.asking_price_usd) < Number(saved.hidden_price_usd)
+        ) {
+          paragraph(
+            info,
+            `Price dropped — was ${money.format(
+              Number(saved.hidden_price_usd),
+            )} when you hid it.`,
+            "match-seller",
+          );
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "match-actions";
+
+        const view = document.createElement("button");
+        view.type = "button";
+        view.textContent = "View listing →";
+        view.setAttribute("aria-haspopup", "dialog");
+        view.setAttribute(
+          "aria-label",
+          `View ${match.card_name} listed by ${match.seller_username}`,
+        );
+        view.addEventListener("click", () => {
+          void openListing(match.listing_id, view);
+        });
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.textContent = isHidden ? "Restore listing" : "Hide listing";
+        toggle.setAttribute(
+          "aria-label",
+          `${isHidden ? "Restore" : "Hide"} ${match.card_name} listed by ${match.seller_username}`,
+        );
+        toggle.addEventListener("click", () => {
+          void changeHidden(match.listing_id, isHidden, toggle);
+        });
+
+        const interested = document.createElement("button");
+        interested.type = "button";
+        interested.textContent = "I’m interested";
+        interested.setAttribute(
+          "aria-label",
+          `Contact ${match.seller_username} about ${match.card_name}`,
+        );
+
+        interested.addEventListener("click", async () => {
+          if (!viewerId) return;
+
+          const viewer = viewerId;
+          interested.disabled = true;
+          interested.textContent = "Opening conversation…";
+
+          try {
+            const { data: auth, error: authError } =
+              await supabase.auth.getSession();
+
+            if (authError) throw authError;
+
+            if (viewerId !== viewer || auth.session?.user.id !== viewer) {
+              throw new Error("Please sign in again.");
+            }
+
+            const { data, error } = await supabase.rpc(
+              "start_sale_conversation",
+              { p_listing_id: match.listing_id },
+            );
+
+            if (viewerId !== viewer) return;
+            if (error) throw error;
+
+            if (typeof data !== "string") {
+              throw new Error("The conversation could not be opened.");
+            }
+
+            window.location.assign(
+              `/mtg/messages?conversation=${encodeURIComponent(data)}`,
+            );
+          } catch (error) {
+            if (viewerId === viewer) {
+              status.textContent = `Couldn’t open the conversation: ${message(error)}`;
+            }
+
+            interested.disabled = false;
+            interested.textContent = "I’m interested";
+          }
+        });
+
+        actions.append(view, interested, toggle);
+        info.append(actions);
+        item.append(info);
+        destination.append(item);
+      }
+
+      visible.forEach((match) => addListing(match, list, false));
+      hidden.forEach((match) => addListing(match, hiddenList, true));
+    }
+
+    async function changeHidden(
+      id: string,
+      restore: boolean,
+      button: HTMLButtonElement,
+    ) {
+      if (!viewerId || changingListing) return;
+
+      const viewer = viewerId;
+      const active = version;
+      changingListing = true;
+      button.disabled = true;
+      button.textContent = restore ? "Restoring…" : "Hiding…";
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (active !== version || viewer !== viewerId) return;
+        if (authError) throw authError;
+
+        if (auth.session?.user.id !== viewer) {
+          throw new Error("Please sign in again.");
+        }
+
+        if (restore) {
+          const { error } = await supabase
+            .from("hidden_sale_matches")
+            .delete()
+            .eq("user_id", viewer)
+            .eq("listing_id", id);
+
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.rpc("hide_sale_match", {
+            p_listing_id: id,
+          });
+
+          if (error) throw error;
+        }
+
+        if (active !== version || viewer !== viewerId) return;
+
+        await loadMatches();
+      } catch (error) {
+        if (active === version && viewer === viewerId) {
+          status.textContent = `Couldn’t ${restore ? "restore" : "hide"} the listing: ${message(error)}`;
+        }
+      } finally {
+        changingListing = false;
+
+        if (button.isConnected) {
+          button.disabled = false;
+          button.textContent = restore ? "Restore listing" : "Hide listing";
+        }
+      }
+    }
+
+    async function loadMatches() {
+      const active = ++version;
+      refresh.disabled = true;
+      clearMatches();
+      status.textContent = "Checking available listings…";
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (active !== version) return;
+        if (error) throw error;
+
+        viewerId = data.session?.user.id ?? null;
+
+        if (!viewerId) {
+          status.textContent =
+            "Sign in to see sale matches for your chase list.";
+          return;
+        }
+
+        const sellerView = viewerId;
+        const matches = new Map<string, SaleMatch>();
+
+        for (let offset = 0; ; offset += 100) {
+          const { data: page, error: matchError } = await supabase.rpc(
+            "get_my_sale_matches",
+            {
+              p_limit: 100,
+              p_offset: offset,
+            },
+          );
+
+          if (active !== version || viewerId !== sellerView) return;
+          if (matchError) throw matchError;
+
+          const batch = (page ?? []) as SaleMatch[];
+
+          batch.forEach((match) => {
+            matches.set(match.listing_id, match);
+          });
+
+          if (batch.length < 100) break;
+        }
+
+        const savedHidden = new Map<string, HiddenMatch>();
+
+        for (let offset = 0; ; offset += 100) {
+          const { data: hiddenPage, error: hiddenError } = await supabase
+            .from("hidden_sale_matches")
+            .select("listing_id, hidden_price_usd")
+            .eq("user_id", sellerView)
+            .order("listing_id", { ascending: true })
+            .range(offset, offset + 99);
+
+          if (active !== version || viewerId !== sellerView) return;
+
+          if (hiddenError) throw hiddenError;
+
+          const batch = (hiddenPage ?? []) as HiddenMatch[];
+
+          batch.forEach((entry) => {
+            savedHidden.set(entry.listing_id, entry);
+          });
+
+          if (batch.length < 100) break;
+        }
+
+        hiddenMatches = savedHidden;
+        renderMatches([...matches.values()]);
+      } catch (error) {
+        if (active === version) {
+          status.textContent = `Couldn’t check sale matches: ${message(error)}`;
+        }
+      } finally {
+        if (active === version) refresh.disabled = !viewerId;
+      }
+    }
+
+    function addPhoto(parent: HTMLElement, url: string, caption: string) {
+      const figure = document.createElement("figure");
+      const image = document.createElement("img");
+      image.src = url;
+      image.alt = caption;
+
+      const label = document.createElement("figcaption");
+      label.textContent = caption;
+
+      image.addEventListener("error", () => {
+        image.hidden = true;
+        label.textContent = `${caption} — image unavailable`;
+      });
+
+      figure.append(image, label);
+      parent.append(figure);
+    }
+
+    async function openListing(id: string, button: HTMLButtonElement) {
+      if (!viewerId) return;
+
+      const active = ++detailVersion;
+      const viewer = viewerId;
+      opener = button;
+
+      detailTitle.textContent = "Sale listing";
+      detailStatus.textContent = "Loading the current listing…";
+      detailBody.replaceChildren();
+
+      if (!dialog.open) dialog.showModal();
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (active !== detailVersion) return;
+
+        if (
+          authError ||
+          auth.session?.user.id !== viewer ||
+          viewer !== viewerId
+        ) {
+          throw new Error("Please sign in again to view this listing.");
+        }
+
+        const { data, error } = await supabase.rpc(
+          "get_available_sale_listing",
+          { p_listing_id: id },
+        );
+
+        if (active !== detailVersion || viewer !== viewerId) return;
+        if (error) throw error;
+
+        const sale = (data as SaleDetail[] | null)?.[0];
+
+        if (!sale) {
+          detailStatus.textContent =
+            "This listing is no longer available. Close this window and check matches again.";
+          return;
+        }
+
+        detailTitle.textContent = sale.card_name;
+
+        paragraph(
+          detailBody,
+          `Seller: @${sale.seller_username}`,
+          "match-seller",
+        );
+        paragraph(
+          detailBody,
+          `${money.format(Number(sale.asking_price_usd))} USD each · ` +
+            `${sale.quantity} available`,
+          "match-name",
+        );
+        paragraph(
+          detailBody,
+          `${sale.set_name} #${sale.collector_number} · ` +
+            `${finish(sale.finish)} · ${sale.condition}`,
+        );
+
+        if (sale.notes) {
+          paragraph(detailBody, sale.notes, "match-notes");
+        }
+
+        const photos = document.createElement("div");
+        photos.className = "match-photos";
+        detailBody.append(photos);
+
+        const paths = [
+          ...new Set(
+            [sale.front_photo_path, sale.back_photo_path].filter(
+              (path): path is string => Boolean(path),
+            ),
+          ),
+        ];
+
+        const signed = new Map<string, string>();
+        let photoError = false;
+
+        if (paths.length) {
+          try {
+            const { data: links, error: linkError } = await supabase.storage
+              .from("card-sale-photos")
+              .createSignedUrls(paths, 600);
+
+            if (active !== detailVersion || viewer !== viewerId) return;
+
+            photoError = Boolean(linkError);
+
+            for (const link of links ?? []) {
+              if (link.path && link.signedUrl) {
+                signed.set(link.path, link.signedUrl);
+              }
+            }
+          } catch {
+            photoError = true;
+          }
+        }
+
+        if (active !== detailVersion || viewer !== viewerId) return;
+
+        const front = sale.front_photo_path
+          ? signed.get(sale.front_photo_path)
+          : null;
+        const back = sale.back_photo_path
+          ? signed.get(sale.back_photo_path)
+          : null;
+        const reference = referenceUrl(sale.image_url);
+
+        if (front) {
+          addPhoto(photos, front, "Actual card — front");
+        } else if (reference) {
+          addPhoto(
+            photos,
+            reference,
+            "Scryfall reference image — not the seller’s actual card",
+          );
+        }
+
+        if (back) {
+          addPhoto(photos, back, "Actual card — back");
+        }
+
+        if (
+          photoError ||
+          (sale.front_photo_path && !front) ||
+          (sale.back_photo_path && !back)
+        ) {
+          paragraph(detailBody, "Some uploaded photos could not be loaded.");
+        }
+
+        detailStatus.textContent =
+          "Available when checked. Confirm the details and arrange the sale directly with the seller.";
+      } catch (error) {
+        if (active === detailVersion) {
+          detailStatus.textContent = `Couldn’t load the listing: ${message(error)}`;
+        }
+      }
+    }
+
+    dialog.addEventListener("close", () => {
+      detailVersion++;
+      detailBody.replaceChildren();
+      detailStatus.textContent = "";
+
+      if (opener?.isConnected) opener.focus();
+      opener = null;
+    });
+
+    refresh.addEventListener("click", () => void loadMatches());
+
+    window.addEventListener("chase-list-loaded", scheduleRefresh);
+
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "TOKEN_REFRESHED") return;
+
+      version++;
+      viewerId = null;
+      clearMatches();
+      refresh.disabled = true;
+      status.textContent = "Checking your sign-in…";
+      scheduleRefresh();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !dialog.open) scheduleRefresh();
+    });
+
+    void loadMatches();
+  }
+</script>
+
+<style>
+  .match-tools {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+  }
+
+  .match-header,
+  .match-close-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .match-header h3,
+  #match-dialog-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .match-help,
+  .match-status,
+  .match-detail-status {
+    margin-top: 0.75rem;
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .match-status {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .match-results {
+    margin-top: 1rem;
+  }
+
+  .match-summary {
+    min-height: 44px;
+    padding-block: 0.5rem;
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .match-list {
+    display: grid;
+    gap: 1rem;
+    padding: 0;
+    list-style: none;
+    margin-top: 1rem;
+  }
+
+  .match-list :global(li) {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+  }
+
+  .match-list :global(.match-thumb) {
+    width: 70px;
+    height: auto;
+    flex: 0 0 70px;
+    border-radius: 0.4rem;
+  }
+
+  .match-list :global(.match-info) {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .match-list :global(p),
+  .match-detail-body :global(p) {
+    margin-bottom: 0.5rem;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    color: var(--color-brand-muted);
+  }
+
+  .match-tools :global(.match-name) {
+    color: var(--color-brand-text);
+    font-weight: 700;
+  }
+
+  .match-tools :global(.match-seller) {
+    color: var(--color-pyroduck-lime);
+    font-weight: 600;
+  }
+
+  .match-tools :global(button) {
+    min-height: 44px;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .match-tools :global(button:hover:not(:disabled)) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .match-tools :global(button:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .match-tools :global(button:focus-visible),
+  .match-summary:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .match-dialog {
+    width: min(760px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  .match-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .match-close-row {
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+
+  .match-detail-body {
+    margin-top: 1rem;
+  }
+
+  .match-detail-body :global(.match-notes) {
+    white-space: pre-wrap;
+  }
+
+  .match-detail-body :global(.match-photos) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 1rem;
+    margin-block: 1rem;
+  }
+
+  .match-detail-body :global(figure) {
+    margin: 0;
+  }
+
+  .match-detail-body :global(img) {
+    display: block;
+    width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+    border-radius: 0.75rem;
+  }
+
+  .match-detail-body :global(figcaption) {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--color-brand-muted);
+  }
+
+  .match-tools :global([hidden]) {
+    display: none !important;
+  }
+  .match-hidden-results {
+    margin-top: 1rem;
+  }
+
+  .match-hidden-summary {
+    min-height: 44px;
+    padding-block: 0.5rem;
+    color: var(--color-brand-muted);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .match-hidden-summary:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .match-tools :global(.match-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+</style>

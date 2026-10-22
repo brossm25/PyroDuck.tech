@@ -1,0 +1,539 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout
+  title="BinderLink Messages"
+  description="Private conversations about Magic: The Gathering sale listings."
+>
+  <section class="px-6 py-16 sm:py-24">
+    <div class="mx-auto max-w-5xl">
+      <a
+        href="/mtg"
+        class="font-semibold text-pyroduck-plasma hover:text-pyroduck-lime"
+      >
+        ← Back to BinderLink
+      </a>
+
+      <h1 class="mt-10 text-4xl font-bold text-brand-text">
+        Your <span class="text-pyroduck-plasma">Messages.</span>
+      </h1>
+
+      <p class="mt-4 text-brand-muted">
+        Ask about cards, discuss shipping, and make offers directly with other
+        players.
+      </p>
+
+      <div class="messages-app mt-8">
+        <div class="inbox-toolbar">
+          <h2>Your conversations</h2>
+          <button type="button" class="inbox-refresh">Refresh inbox</button>
+        </div>
+
+        <p class="inbox-status" role="status" aria-live="polite">
+          Checking your sign-in…
+        </p>
+
+        <div class="messages-layout">
+          <nav aria-label="Sale conversations">
+            <ul class="conversation-list"></ul>
+          </nav>
+
+          <section class="conversation-panel" hidden>
+            <h2 class="conversation-title"></h2>
+            <p class="conversation-details"></p>
+
+            <button type="button" class="thread-refresh">
+              Check for replies
+            </button>
+
+            <p class="thread-status" role="status" aria-live="polite"></p>
+            <ol class="message-list" aria-label="Messages"></ol>
+
+            <form class="message-form">
+              <label for="sale-message-body">Your message</label>
+              <textarea
+                id="sale-message-body"
+                rows="4"
+                maxlength="4000"
+                required
+                placeholder="Ask about the card or make an offer…"></textarea>
+              <button type="submit" class="message-send">Send message</button>
+              <p class="send-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Conversation {
+    id: string;
+    card_name: string;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    other_username: string | null;
+    created_at: string;
+  }
+
+  interface SaleMessage {
+    id: string;
+    sender_id: string;
+    body: string;
+    created_at: string;
+  }
+
+  const root = document.querySelector<HTMLElement>(".messages-app");
+
+  if (root) {
+    const inboxStatus = root.querySelector<HTMLElement>(".inbox-status")!;
+    const inboxRefresh =
+      root.querySelector<HTMLButtonElement>(".inbox-refresh")!;
+    const conversations =
+      root.querySelector<HTMLUListElement>(".conversation-list")!;
+    const panel = root.querySelector<HTMLElement>(".conversation-panel")!;
+    const title = root.querySelector<HTMLElement>(".conversation-title")!;
+    const details = root.querySelector<HTMLElement>(".conversation-details")!;
+    const threadRefresh =
+      root.querySelector<HTMLButtonElement>(".thread-refresh")!;
+    const threadStatus = root.querySelector<HTMLElement>(".thread-status")!;
+    const messages = root.querySelector<HTMLOListElement>(".message-list")!;
+    const form = root.querySelector<HTMLFormElement>(".message-form")!;
+    const body = root.querySelector<HTMLTextAreaElement>("textarea")!;
+    const send = root.querySelector<HTMLButtonElement>(".message-send")!;
+    const sendStatus = root.querySelector<HTMLElement>(".send-status")!;
+
+    let viewer: string | null = null;
+    let selected: Conversation | null = null;
+    let inboxVersion = 0;
+    let threadVersion = 0;
+    let sending = false;
+    let authTimer: number | undefined;
+
+    function errorMessage(error: unknown) {
+      return error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+        ? error.message
+        : "Please try again.";
+    }
+
+    function otherName(conversation: Conversation) {
+      return conversation.other_username
+        ? `@${conversation.other_username}`
+        : "Other player";
+    }
+
+    function clearThread() {
+      threadVersion++;
+      selected = null;
+      panel.hidden = true;
+      messages.replaceChildren();
+      body.value = "";
+      threadStatus.textContent = "";
+      sendStatus.textContent = "";
+    }
+
+    async function loadInbox() {
+      const active = ++inboxVersion;
+      const previous = selected?.id;
+      inboxRefresh.disabled = true;
+      conversations.replaceChildren();
+      clearThread();
+      inboxStatus.textContent = "Loading conversations…";
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (active !== inboxVersion) return;
+        if (authError) throw authError;
+
+        const nextViewer = auth.session?.user.id ?? null;
+        const sameViewer = viewer === nextViewer;
+        viewer = nextViewer;
+
+        if (!viewer) {
+          inboxStatus.textContent =
+            "Sign in using the account menu above to read your messages.";
+          return;
+        }
+
+        const { data, error } = await supabase.rpc("get_my_sale_conversations");
+
+        if (active !== inboxVersion) return;
+        if (error) throw error;
+
+        const rows = (data ?? []) as Conversation[];
+
+        inboxStatus.textContent = rows.length
+          ? "Choose a conversation. Use Check for replies to load new messages."
+          : "No conversations yet. Open a sale listing and choose I’m interested.";
+
+        for (const conversation of rows) {
+          const item = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.conversation = conversation.id;
+          button.textContent = `${conversation.card_name} · ${otherName(conversation)}`;
+          button.addEventListener("click", () => {
+            void openConversation(conversation);
+          });
+          item.append(button);
+          conversations.append(item);
+        }
+
+        const requested = new URL(window.location.href).searchParams.get(
+          "conversation",
+        );
+        const target = rows.find(
+          (row) => row.id === (sameViewer && previous ? previous : requested),
+        );
+
+        if (target) {
+          await openConversation(target);
+        } else if (requested && !rows.length) {
+          inboxStatus.textContent =
+            "This conversation is unavailable for your account.";
+        }
+      } catch (error) {
+        if (active === inboxVersion) {
+          inboxStatus.textContent = `Couldn’t load conversations: ${errorMessage(error)}`;
+        }
+      } finally {
+        if (active === inboxVersion) inboxRefresh.disabled = false;
+      }
+    }
+
+    async function openConversation(conversation: Conversation) {
+      if (!viewer || sending) return;
+
+      selected = conversation;
+      panel.hidden = false;
+      title.textContent = `${conversation.card_name} · ${otherName(conversation)}`;
+      details.textContent =
+        `${conversation.set_name} #${conversation.collector_number} · ` +
+        conversation.finish;
+      body.value = "";
+      sendStatus.textContent = "";
+
+      root!
+        .querySelectorAll<HTMLButtonElement>("[data-conversation]")
+        .forEach((button) => {
+          button.setAttribute(
+            "aria-pressed",
+            String(button.dataset.conversation === conversation.id),
+          );
+        });
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("conversation", conversation.id);
+      window.history.replaceState(null, "", url);
+
+      await loadThread();
+    }
+
+    async function loadThread() {
+      if (!viewer || !selected) return;
+
+      const active = ++threadVersion;
+      const user = viewer;
+      const conversation = selected;
+      threadRefresh.disabled = true;
+      threadStatus.textContent = "Loading messages…";
+
+      try {
+        const rows: SaleMessage[] = [];
+
+        for (let offset = 0; ; offset += 100) {
+          const { data, error } = await supabase
+            .from("sale_messages")
+            .select("id, sender_id, body, created_at")
+            .eq("conversation_id", conversation.id)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(offset, offset + 99);
+
+          if (
+            active !== threadVersion ||
+            viewer !== user ||
+            selected?.id !== conversation.id
+          )
+            return;
+
+          if (error) throw error;
+
+          const batch = (data ?? []) as SaleMessage[];
+          rows.push(...batch);
+          if (batch.length < 100) break;
+        }
+
+        messages.replaceChildren();
+
+        for (const message of rows) {
+          const item = document.createElement("li");
+          item.className =
+            message.sender_id === user ? "message-own" : "message-other";
+
+          const heading = document.createElement("p");
+          heading.className = "message-meta";
+          heading.textContent =
+            `${message.sender_id === user ? "You" : otherName(conversation)} · ` +
+            new Date(message.created_at).toLocaleString();
+
+          const text = document.createElement("p");
+          text.className = "message-body";
+          text.textContent = message.body;
+
+          item.append(heading, text);
+          messages.append(item);
+        }
+
+        threadStatus.textContent = rows.length
+          ? "Messages are up to date."
+          : "No messages yet. Introduce yourself below.";
+      } catch (error) {
+        if (active === threadVersion) {
+          threadStatus.textContent = `Couldn’t load messages: ${errorMessage(error)}`;
+        }
+      } finally {
+        if (active === threadVersion) threadRefresh.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (!viewer || !selected || sending) return;
+
+      const text = body.value.trim();
+      if (!text) {
+        sendStatus.textContent = "Write a message first.";
+        return;
+      }
+
+      const user = viewer;
+      const conversationId = selected.id;
+      const active = inboxVersion;
+
+      sending = true;
+      send.disabled = true;
+      inboxRefresh.disabled = true;
+      sendStatus.textContent = "Sending…";
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (
+          active !== inboxVersion ||
+          viewer !== user ||
+          selected?.id !== conversationId
+        )
+          return;
+
+        if (authError) throw authError;
+        if (auth.session?.user.id !== user) {
+          throw new Error("Please sign in again.");
+        }
+
+        const { error } = await supabase.from("sale_messages").insert({
+          conversation_id: conversationId,
+          sender_id: user,
+          body: text,
+        });
+
+        if (error) throw error;
+
+        if (
+          active !== inboxVersion ||
+          viewer !== user ||
+          selected?.id !== conversationId
+        )
+          return;
+
+        body.value = "";
+        sendStatus.textContent = "Message sent.";
+        await loadThread();
+      } catch (error) {
+        if (
+          active === inboxVersion &&
+          viewer === user &&
+          selected?.id === conversationId
+        ) {
+          sendStatus.textContent = `Couldn’t confirm the message was sent: ${errorMessage(error)} Check for replies before retrying.`;
+        }
+      } finally {
+        sending = false;
+        send.disabled = false;
+        inboxRefresh.disabled = false;
+      }
+    });
+
+    inboxRefresh.addEventListener("click", () => {
+      if (!sending) void loadInbox();
+    });
+
+    threadRefresh.addEventListener("click", () => void loadThread());
+
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "TOKEN_REFRESHED") return;
+
+      inboxVersion++;
+      viewer = null;
+      conversations.replaceChildren();
+      clearThread();
+      inboxStatus.textContent = "Checking your sign-in…";
+
+      window.clearTimeout(authTimer);
+      authTimer = window.setTimeout(() => void loadInbox(), 80);
+    });
+
+    void loadInbox();
+  }
+</script>
+
+<style>
+  .messages-app {
+    padding: 1.25rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  .inbox-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .messages-app h2 {
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .inbox-status,
+  .thread-status,
+  .send-status,
+  .conversation-details {
+    margin-block: 0.75rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+  }
+
+  .messages-layout {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .conversation-list,
+  .message-list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .messages-app :global(button) {
+    min-height: 44px;
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .conversation-list :global(button) {
+    width: 100%;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .messages-app :global(button[aria-pressed="true"]) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .messages-app :global(button:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .messages-app :global(button:focus-visible),
+  textarea:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .message-list {
+    max-height: 32rem;
+    overflow-y: auto;
+    margin-block: 1rem;
+  }
+
+  .message-list :global(li) {
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+  }
+
+  .message-list :global(.message-own) {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .message-list :global(.message-meta) {
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-brand-muted);
+  }
+
+  .message-list :global(.message-body) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+  }
+
+  .message-form {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .message-form label {
+    font-weight: 600;
+  }
+
+  textarea {
+    width: 100%;
+    resize: vertical;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .messages-app :global([hidden]) {
+    display: none !important;
+  }
+
+  @media (min-width: 768px) {
+    .messages-layout {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    }
+  }
+</style>

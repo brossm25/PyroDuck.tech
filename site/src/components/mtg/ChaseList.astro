@@ -1,3 +1,7 @@
+---
+import SaleMatches from "@/components/mtg/SaleMatches.astro";
+---
+
 <section
   aria-labelledby="chase-list-heading"
   class="rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
@@ -20,6 +24,8 @@
     Your saved printings and finishes. Price estimates refresh when you open
     this list if their last check was more than 24 hours ago.
   </p>
+
+  <SaleMatches />
 
   <p class="chase-list-status mt-4 text-brand-muted" role="status"></p>
 
@@ -813,6 +819,7 @@
 
       cards = (data ?? []) as ChaseCard[];
       renderCards();
+      window.dispatchEvent(new Event("chase-list-loaded"));
       loaded = true;
     } catch {
       if (activeRequest !== requestId) return;
