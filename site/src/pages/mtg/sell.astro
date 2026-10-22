@@ -1,0 +1,41 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import SellList from "@/components/mtg/SellList.astro";
+---
+
+<Layout
+  title="My Sell List"
+  description="Manage the Magic: The Gathering cards you have available for sale."
+>
+  <section class="px-6 py-16 sm:py-24">
+    <div class="mx-auto max-w-5xl">
+      <a
+        href="/mtg"
+        class="rounded-sm font-semibold text-pyroduck-plasma hover:text-pyroduck-lime focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pyroduck-lime"
+      >
+        ← Back to MTG Corner
+      </a>
+
+      <p
+        class="mt-10 text-sm font-semibold uppercase tracking-widest text-pyroduck-lime"
+      >
+        Your cards, ready for a new home
+      </p>
+
+      <h1 class="mt-3 text-4xl font-bold text-brand-text sm:text-5xl">
+        My <span class="text-pyroduck-plasma">Sell List.</span>
+      </h1>
+
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-brand-muted">
+        List cards you want to sell, choose their exact printing, and upload
+        front and back photos of your actual cards.
+      </p>
+
+      <div
+        class="mt-10 rounded-2xl border border-pyroduck-plasma/30 bg-pyroduck-afterdark p-6 sm:p-8"
+      >
+        <SellList />
+      </div>
+    </div>
+  </section>
+</Layout>

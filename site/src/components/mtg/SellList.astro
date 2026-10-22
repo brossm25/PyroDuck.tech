@@ -1,0 +1,2412 @@
+<section class="sell-tools" aria-labelledby="sell-heading">
+  <h2 id="sell-heading">Add a card for sale</h2>
+  <p class="sell-auth" role="status">Checking your sign-in…</p>
+
+  <form class="sell-search">
+    <label for="sell-query">Card name</label>
+    <div class="search-row">
+      <input
+        id="sell-query"
+        type="search"
+        placeholder="Try Ancient Tomb"
+        maxlength="100"
+        required
+      />
+      <button type="submit">Find card</button>
+    </div>
+  </form>
+
+  <p class="sell-message" role="status" aria-live="polite"></p>
+
+  <form class="sell-form" hidden>
+    <fieldset>
+      <legend>Listing details</legend>
+
+      <label for="sell-printing">Printing</label>
+      <select id="sell-printing" required></select>
+
+      <img class="reference-image" alt="" hidden />
+      <p class="help reference-label">Scryfall reference image</p>
+
+      <label for="sell-finish">Finish</label>
+      <select id="sell-finish" required></select>
+
+      <p class="sell-estimate help" role="status" aria-live="polite"></p>
+
+      <div class="field-grid">
+        <div>
+          <label for="sell-price">Price per card (USD)</label>
+          <input
+            id="sell-price"
+            type="number"
+            min="0"
+            max="99999999.99"
+            step="0.01"
+            required
+          />
+          <p
+            class="sell-price-comparison help"
+            role="status"
+            aria-live="polite"
+          >
+          </p>
+        </div>
+        <div>
+          <label for="sell-quantity">Quantity</label>
+          <input
+            id="sell-quantity"
+            type="number"
+            min="1"
+            max="10000"
+            step="1"
+            value="1"
+            required
+          />
+        </div>
+      </div>
+
+      <label for="sell-condition">Condition</label>
+      <select id="sell-condition" required>
+        <option value="">Choose condition</option>
+        <option value="NM">Near Mint (NM)</option>
+        <option value="LP">Lightly Played (LP)</option>
+        <option value="MP">Moderately Played (MP)</option>
+        <option value="HP">Heavily Played (HP)</option>
+        <option value="DMG">Damaged (DMG)</option>
+      </select>
+
+      <label for="sell-notes">Notes</label>
+      <textarea
+        id="sell-notes"
+        rows="4"
+        maxlength="2000"
+        placeholder="Describe wear, signatures, or differences between copies."
+      ></textarea>
+
+      <div class="field-grid">
+        <div>
+          <label for="sell-front">Actual card: front</label>
+          <input
+            id="sell-front"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+          />
+          <img
+            class="upload-preview front-preview"
+            alt="Selected front photo"
+            hidden
+          />
+        </div>
+        <div>
+          <label for="sell-back">Actual card: back</label>
+          <input
+            id="sell-back"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+          />
+          <img
+            class="upload-preview back-preview"
+            alt="Selected back photo"
+            hidden
+          />
+        </div>
+      </div>
+
+      <p class="help">
+        Photos are optional: JPEG, PNG, or WebP, up to 5 MB each. Use good light
+        and show every edge. Describe any differences between copies when
+        listing more than one.
+      </p>
+
+      <button type="submit">Save sale listing</button>
+    </fieldset>
+  </form>
+
+  <section class="saved-section" aria-labelledby="saved-heading">
+    <h2 id="saved-heading">Your sale listings</h2>
+
+    <div
+      class="color-filters"
+      role="group"
+      aria-label="Filter listings by color"
+    >
+      <button type="button" data-filter="all" aria-pressed="true">
+        <span class="filter-icon all-icon" aria-hidden="true"> ✦ </span>
+        <span>All</span>
+      </button>
+
+      <button type="button" data-filter="white" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/W.svg" alt="" />
+        <span>White</span>
+      </button>
+
+      <button type="button" data-filter="blue" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/U.svg" alt="" />
+        <span>Blue</span>
+      </button>
+
+      <button type="button" data-filter="black" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/B.svg" alt="" />
+        <span>Black</span>
+      </button>
+
+      <button type="button" data-filter="red" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/R.svg" alt="" />
+        <span>Red</span>
+      </button>
+
+      <button type="button" data-filter="green" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/G.svg" alt="" />
+        <span>Green</span>
+      </button>
+
+      <button type="button" data-filter="colorless" aria-pressed="false">
+        <img src="https://svgs.scryfall.io/card-symbols/C.svg" alt="" />
+        <span>Colorless</span>
+      </button>
+
+      <button type="button" data-filter="multicolor" aria-pressed="false">
+        <span class="filter-icon multicolor-icon" aria-hidden="true"></span>
+        <span>Multicolor</span>
+      </button>
+
+      <button type="button" data-filter="lands" aria-pressed="false">
+        <span class="filter-icon land-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <circle cx="23" cy="9" r="3" fill="currentColor"></circle>
+            <path d="M4 24 12 10l6 10 3-5 7 9H4Z" fill="currentColor"></path>
+            <path d="M4 27h24" stroke="currentColor" stroke-width="2"></path>
+          </svg>
+        </span>
+        <span>Lands</span>
+      </button>
+    </div>
+
+    <p class="list-status" role="status"></p>
+    <div class="listing-groups"></div>
+  </section>
+
+  <section class="saved-section" aria-labelledby="sales-history-heading">
+    <h2 id="sales-history-heading">My Sales History</h2>
+    <p class="help">
+      Private to you. Revenue excludes fees and shipping costs.
+    </p>
+    <p class="sales-total"></p>
+    <p class="sales-history-status" role="status"></p>
+    <ul class="sales-history-items"></ul>
+  </section>
+
+  <dialog class="sale-dialog" aria-labelledby="sale-dialog-heading">
+    <h2 id="sale-dialog-heading">Record a sale</h2>
+    <p class="sale-card-name help"></p>
+
+    <form class="record-sale-form">
+      <fieldset>
+        <label for="actual-sale-price">Actual sale price per card (USD)</label>
+        <input
+          id="actual-sale-price"
+          type="number"
+          min="0"
+          max="99999999.99"
+          step="0.01"
+          required
+        />
+
+        <label for="actual-sale-quantity">Quantity sold</label>
+        <input
+          id="actual-sale-quantity"
+          type="number"
+          min="1"
+          step="1"
+          required
+        />
+
+        <label for="actual-sale-date">Date sold</label>
+        <input id="actual-sale-date" type="date" required />
+
+        <p class="sale-error help" role="status"></p>
+
+        <div class="sale-actions">
+          <button type="submit">Record sale</button>
+          <button type="button" class="cancel-sale"> Cancel </button>
+        </div>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <dialog class="edit-dialog" aria-labelledby="edit-dialog-heading">
+    <h2 id="edit-dialog-heading">Edit listing</h2>
+    <p class="edit-card-name help"></p>
+    <form class="edit-listing-form">
+      <fieldset>
+        <label for="edit-listing-price">Price per card (USD)</label>
+        <input
+          id="edit-listing-price"
+          type="number"
+          min="0"
+          max="99999999.99"
+          step="0.01"
+          required
+        />
+        <label for="edit-listing-quantity">Quantity available</label>
+        <input
+          id="edit-listing-quantity"
+          type="number"
+          min="1"
+          max="10000"
+          step="1"
+          required
+        />
+        <label for="edit-listing-condition">Condition</label>
+        <select id="edit-listing-condition" required>
+          <option value="NM">Near Mint (NM)</option>
+          <option value="LP">Lightly Played (LP)</option>
+          <option value="MP">Moderately Played (MP)</option>
+          <option value="HP">Heavily Played (HP)</option>
+          <option value="DMG">Damaged (DMG)</option>
+        </select>
+        <label for="edit-listing-notes">Notes</label>
+        <textarea id="edit-listing-notes" rows="4" maxlength="2000"></textarea>
+        <p class="edit-error help" role="status"></p>
+        <div class="sale-actions">
+          <button type="submit">Save changes</button>
+          <button type="button" class="cancel-edit"> Cancel </button>
+        </div>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <dialog class="history-edit-dialog" aria-labelledby="history-edit-heading">
+    <h2 id="history-edit-heading">Edit sale record</h2>
+    <p class="history-edit-name help"></p>
+    <p class="help">
+      Correct the sale price or date here. To change the quantity, undo this
+      sale and record it again.
+    </p>
+    <form class="edit-sale-form">
+      <fieldset>
+        <label for="history-edit-price">Actual sale price per card (USD)</label>
+        <input
+          id="history-edit-price"
+          type="number"
+          min="0"
+          max="99999999.99"
+          step="0.01"
+          required
+        />
+        <label for="history-edit-date">Date sold</label>
+        <input id="history-edit-date" type="date" required />
+        <p class="history-edit-error help" role="status"></p>
+        <div class="sale-actions">
+          <button type="submit">Save sale changes</button>
+          <button type="button" class="cancel-history-edit"> Cancel </button>
+        </div>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <dialog class="confirm-dialog" aria-labelledby="confirm-heading">
+    <h2 id="confirm-heading">Confirm change</h2>
+    <p class="confirm-description help"></p>
+    <p class="confirm-error help" role="status"></p>
+    <div class="sale-actions">
+      <button type="button" class="confirm-accept"> Confirm </button>
+      <button type="button" class="confirm-cancel"> Cancel </button>
+    </div>
+  </dialog>
+
+  <dialog class="photo-dialog" aria-label="Card photo">
+    <form method="dialog">
+      <button type="submit">Close ✕</button>
+    </form>
+    <p class="photo-title"></p>
+    <img class="full-photo" alt="" />
+  </dialog>
+</section>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  type ColorGroup =
+    | "white"
+    | "blue"
+    | "black"
+    | "red"
+    | "green"
+    | "colorless"
+    | "multicolor"
+    | "lands";
+
+  interface Printing {
+    id: string;
+    oracle_id?: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    scryfall_uri: string;
+    type_line?: string;
+    colors?: string[];
+    finishes: string[];
+    prices?: {
+      usd?: string | null;
+      usd_foil?: string | null;
+      usd_etched?: string | null;
+    };
+    image_uris?: { normal: string };
+    card_faces?: {
+      colors?: string[];
+      type_line?: string;
+      image_uris?: { normal: string };
+    }[];
+  }
+
+  interface Listing {
+    id: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    asking_price_usd: number | string;
+    quantity: number;
+    condition: string;
+    notes: string;
+    status: string;
+    color_group: ColorGroup;
+    image_url: string | null;
+    front_photo_path: string | null;
+    back_photo_path: string | null;
+  }
+
+  const root = document.querySelector<HTMLElement>(".sell-tools");
+
+  if (root) {
+    const search = root.querySelector<HTMLFormElement>(".sell-search")!;
+    const form = root.querySelector<HTMLFormElement>(".sell-form")!;
+    const fieldset = form.querySelector<HTMLFieldSetElement>("fieldset")!;
+    const query = root.querySelector<HTMLInputElement>("#sell-query")!;
+    const printingSelect =
+      root.querySelector<HTMLSelectElement>("#sell-printing")!;
+    const finishSelect = root.querySelector<HTMLSelectElement>("#sell-finish")!;
+    const reference = root.querySelector<HTMLImageElement>(".reference-image")!;
+    const price = root.querySelector<HTMLInputElement>("#sell-price")!;
+    const quantity = root.querySelector<HTMLInputElement>("#sell-quantity")!;
+    const condition = root.querySelector<HTMLSelectElement>("#sell-condition")!;
+    const notes = root.querySelector<HTMLTextAreaElement>("#sell-notes")!;
+    const front = root.querySelector<HTMLInputElement>("#sell-front")!;
+    const back = root.querySelector<HTMLInputElement>("#sell-back")!;
+    const authMessage = root.querySelector<HTMLElement>(".sell-auth")!;
+    const message = root.querySelector<HTMLElement>(".sell-message")!;
+    const listStatus = root.querySelector<HTMLElement>(".list-status")!;
+    const groupsElement = root.querySelector<HTMLElement>(".listing-groups")!;
+    const filterButtons =
+      root.querySelectorAll<HTMLButtonElement>("[data-filter]");
+    const photoDialog = root.querySelector<HTMLDialogElement>(".photo-dialog")!;
+    const fullPhoto = root.querySelector<HTMLImageElement>(".full-photo")!;
+    const photoTitle = root.querySelector<HTMLElement>(".photo-title")!;
+
+    const editDialog = root.querySelector<HTMLDialogElement>(".edit-dialog")!;
+    const editForm = root.querySelector<HTMLFormElement>(".edit-listing-form")!;
+    const editFieldset =
+      editForm.querySelector<HTMLFieldSetElement>("fieldset")!;
+    const editPrice = root.querySelector<HTMLInputElement>(
+      "#edit-listing-price",
+    )!;
+    const editQuantity = root.querySelector<HTMLInputElement>(
+      "#edit-listing-quantity",
+    )!;
+    const editCondition = root.querySelector<HTMLSelectElement>(
+      "#edit-listing-condition",
+    )!;
+    const editNotes = root.querySelector<HTMLTextAreaElement>(
+      "#edit-listing-notes",
+    )!;
+    const editName = root.querySelector<HTMLElement>(".edit-card-name")!;
+    const editError = root.querySelector<HTMLElement>(".edit-error")!;
+    const historyEditDialog = root.querySelector<HTMLDialogElement>(
+      ".history-edit-dialog",
+    )!;
+    const historyEditForm =
+      root.querySelector<HTMLFormElement>(".edit-sale-form")!;
+    const historyEditFieldset =
+      historyEditForm.querySelector<HTMLFieldSetElement>("fieldset")!;
+    const historyEditPrice = root.querySelector<HTMLInputElement>(
+      "#history-edit-price",
+    )!;
+    const historyEditDate =
+      root.querySelector<HTMLInputElement>("#history-edit-date")!;
+    const historyEditName =
+      root.querySelector<HTMLElement>(".history-edit-name")!;
+    const historyEditError = root.querySelector<HTMLElement>(
+      ".history-edit-error",
+    )!;
+    const confirmDialog =
+      root.querySelector<HTMLDialogElement>(".confirm-dialog")!;
+    const confirmHeading = root.querySelector<HTMLElement>("#confirm-heading")!;
+    const confirmDescription = root.querySelector<HTMLElement>(
+      ".confirm-description",
+    )!;
+    const confirmError = root.querySelector<HTMLElement>(".confirm-error")!;
+    const confirmAccept =
+      root.querySelector<HTMLButtonElement>(".confirm-accept")!;
+    const confirmCancel =
+      root.querySelector<HTMLButtonElement>(".confirm-cancel")!;
+
+    const bucket = supabase.storage.from("card-sale-photos");
+    const money = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+    const sorter = new Intl.Collator("en", {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    const groups: { key: ColorGroup; label: string }[] = [
+      { key: "white", label: "White" },
+      { key: "blue", label: "Blue" },
+      { key: "black", label: "Black" },
+      { key: "red", label: "Red" },
+      { key: "green", label: "Green" },
+      { key: "colorless", label: "Colorless" },
+      { key: "multicolor", label: "Multicolor" },
+      { key: "lands", label: "Lands" },
+    ];
+
+    let userId: string | null = null;
+    let printings: Printing[] = [];
+    let listings: Listing[] = [];
+    let selectedFilter = "all";
+    let busy = false;
+    let authVersion = 0;
+    let listVersion = 0;
+    let searchController: AbortController | undefined;
+    let editTarget: Listing | null = null;
+    let historyEditTarget: Sale | null = null;
+    let editSeller: string | null = null;
+    let historyEditSeller: string | null = null;
+    let confirmTask: (() => Promise<string>) | null = null;
+    let confirmSeller: string | null = null;
+    let saleRequestId = "";
+
+    function errorMessage(error: unknown, fallback = "Something went wrong.") {
+      if (
+        error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+      )
+        return error.message;
+      return fallback;
+    }
+
+    function localDate() {
+      const today = new Date();
+      return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    }
+
+    async function requireSeller(seller: string) {
+      const { data, error } = await supabase.auth.getSession();
+      if (
+        error ||
+        !data.session ||
+        data.session.user.id !== seller ||
+        seller !== userId
+      ) {
+        throw new Error("Please sign in again before saving changes.");
+      }
+    }
+
+    const photoUrls = new Map<string, string>();
+    const localPreviews = new Map<HTMLInputElement, string>();
+
+    function imageFor(card: Printing) {
+      return (
+        card.image_uris?.normal ??
+        card.card_faces?.[0]?.image_uris?.normal ??
+        null
+      );
+    }
+
+    function groupFor(card: Printing): ColorGroup {
+      const types = [
+        card.type_line ?? "",
+        ...(card.card_faces ?? []).map((face) => face.type_line ?? ""),
+      ];
+
+      if (types.some((type) => /\bLand\b/.test(type))) return "lands";
+
+      const colors = new Set(
+        card.colors ??
+          (card.card_faces ?? []).flatMap((face) => face.colors ?? []),
+      );
+
+      if (colors.size === 0) return "colorless";
+      if (colors.size > 1) return "multicolor";
+
+      const names: Record<string, ColorGroup> = {
+        W: "white",
+        U: "blue",
+        B: "black",
+        R: "red",
+        G: "green",
+      };
+
+      return names[[...colors][0]] ?? "colorless";
+    }
+
+    function finishName(value: string) {
+      return (
+        {
+          nonfoil: "Nonfoil",
+          foil: "Foil",
+          etched: "Etched foil",
+        }[value] ?? value
+      );
+    }
+
+    function syncControls() {
+      search
+        .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button")
+        .forEach((control) => {
+          control.disabled = busy || !userId;
+        });
+
+      fieldset.disabled = busy || !userId;
+
+      root!
+        .querySelectorAll<HTMLButtonElement | HTMLSelectElement>(
+          ".listing-groups button[data-action], .listing-groups select, .sales-history-items button[data-action]",
+        )
+        .forEach((control) => {
+          control.disabled = busy || !userId;
+        });
+    }
+
+    function clearLocalPreviews() {
+      for (const url of localPreviews.values()) URL.revokeObjectURL(url);
+      localPreviews.clear();
+
+      root!
+        .querySelectorAll<HTMLImageElement>(".upload-preview")
+        .forEach((image) => {
+          image.hidden = true;
+          image.removeAttribute("src");
+        });
+    }
+
+    function validatePhoto(file: File | undefined) {
+      if (!file) return;
+
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        throw new Error("Photos must be JPEG, PNG, or WebP.");
+      }
+
+      if (!file.size || file.size > 5 * 1024 * 1024) {
+        throw new Error("Each photo must be nonempty and 5 MB or smaller.");
+      }
+    }
+
+    for (const [input, selector] of [
+      [front, ".front-preview"],
+      [back, ".back-preview"],
+    ] as const) {
+      input.addEventListener("change", () => {
+        const preview = root.querySelector<HTMLImageElement>(selector)!;
+        const previous = localPreviews.get(input);
+        if (previous) URL.revokeObjectURL(previous);
+        localPreviews.delete(input);
+        preview.hidden = true;
+        preview.removeAttribute("src");
+
+        try {
+          const file = input.files?.[0];
+          validatePhoto(file);
+          if (!file) return;
+
+          const url = URL.createObjectURL(file);
+          localPreviews.set(input, url);
+          preview.src = url;
+          preview.hidden = false;
+        } catch (error) {
+          input.value = "";
+          message.textContent = (error as Error).message;
+        }
+      });
+    }
+
+    function updatePriceComparison() {
+      const comparison = root!.querySelector<HTMLElement>(
+        ".sell-price-comparison",
+      );
+      if (!comparison) return;
+
+      const card = printings[Number(printingSelect.value)];
+
+      if (!card || price.value.trim() === "") {
+        comparison.textContent = "";
+        return;
+      }
+
+      const raw =
+        finishSelect.value === "foil"
+          ? card.prices?.usd_foil
+          : finishSelect.value === "etched"
+            ? card.prices?.usd_etched
+            : card.prices?.usd;
+
+      const estimate = raw == null || raw.trim() === "" ? NaN : Number(raw);
+      const asking = Number(price.value);
+
+      if (!Number.isFinite(asking) || asking < 0) {
+        comparison.textContent = "Enter a valid asking price.";
+        return;
+      }
+
+      if (!Number.isFinite(estimate) || estimate <= 0) {
+        comparison.textContent = "Comparison unavailable.";
+        return;
+      }
+
+      const difference = asking - estimate;
+      const percentage = Math.abs(difference / estimate) * 100;
+      const formatted = percentage.toLocaleString("en-US", {
+        maximumFractionDigits: 1,
+      });
+
+      comparison.textContent =
+        Math.abs(difference) < 0.005
+          ? "Your price matches the Scryfall estimate."
+          : `Your price is ${percentage < 0.1 ? "less than 0.1" : formatted}% ${
+              difference < 0 ? "below" : "above"
+            } the Scryfall estimate.`;
+    }
+
+    function updateEstimate() {
+      updatePriceComparison();
+
+      const estimate = root!.querySelector<HTMLElement>(".sell-estimate");
+      const card = printings[Number(printingSelect.value)];
+
+      if (!estimate) return;
+
+      if (!card) {
+        estimate.textContent = "";
+        return;
+      }
+
+      const raw =
+        finishSelect.value === "foil"
+          ? card.prices?.usd_foil
+          : finishSelect.value === "etched"
+            ? card.prices?.usd_etched
+            : card.prices?.usd;
+
+      const amount = raw == null || raw.trim() === "" ? NaN : Number(raw);
+
+      estimate.textContent =
+        Number.isFinite(amount) && amount >= 0
+          ? `Scryfall estimate: ${money.format(amount)} USD. Reference only; does not account for your card’s condition or signatures.`
+          : "No Scryfall price available for this printing and finish.";
+    }
+
+    function showPrinting() {
+      const card = printings[Number(printingSelect.value)];
+      if (!card) return;
+
+      const image = imageFor(card);
+      reference.hidden = !image;
+
+      if (image) reference.src = image;
+      else reference.removeAttribute("src");
+
+      reference.alt = `${card.name}, ${card.set_name} #${card.collector_number}`;
+
+      finishSelect.replaceChildren();
+
+      for (const finish of card.finishes) {
+        finishSelect.add(new Option(finishName(finish), finish));
+      }
+
+      updateEstimate();
+    }
+
+    function openPhoto(url: string, title: string) {
+      fullPhoto.src = url;
+      fullPhoto.alt = title;
+      photoTitle.textContent = title;
+      if (!photoDialog.open) photoDialog.showModal();
+    }
+
+    function photoButton(url: string, title: string, label: string) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "listing-photo";
+      button.setAttribute("aria-label", `Enlarge ${title}`);
+      button.setAttribute("aria-haspopup", "dialog");
+
+      const image = document.createElement("img");
+      image.src = url;
+      image.alt = title;
+      image.loading = "lazy";
+
+      const caption = document.createElement("span");
+      caption.textContent = label;
+
+      button.append(image, caption);
+      button.addEventListener("click", () => openPhoto(url, title));
+      return button;
+    }
+
+    function renderListings() {
+      groupsElement.replaceChildren();
+
+      if (!userId) {
+        listStatus.textContent = "Sign in to see your sale listings.";
+        return;
+      }
+
+      const visible = listings.filter(
+        (card) =>
+          selectedFilter === "all" || card.color_group === selectedFilter,
+      );
+
+      const selectedGroup = groups.find(
+        (group) => group.key === selectedFilter,
+      );
+
+      listStatus.textContent =
+        selectedFilter !== "all" && visible.length === 0
+          ? selectedFilter === "lands"
+            ? "Unfortunately, there are no lands for sale right now."
+            : `Unfortunately, there are no ${selectedGroup?.label.toLowerCase() ?? selectedFilter} cards for sale right now.`
+          : listings.length === 0
+            ? "No sale listings yet."
+            : `${visible.length} of ${listings.length} listings shown.`;
+
+      for (const group of groups) {
+        const cards = visible
+          .filter((card) => card.color_group === group.key)
+          .sort(
+            (a, b) =>
+              sorter.compare(a.name, b.name) ||
+              sorter.compare(a.set_name, b.set_name) ||
+              sorter.compare(a.collector_number, b.collector_number),
+          );
+
+        if (!cards.length) continue;
+
+        const section = document.createElement("section");
+        section.className = "listing-group";
+
+        const heading = document.createElement("h3");
+        heading.className = "group-heading";
+        heading.textContent = `${group.label} · ${cards.length}`;
+
+        const grid = document.createElement("ul");
+        grid.className = "listing-grid";
+
+        for (const card of cards) {
+          const item = document.createElement("li");
+          item.className = "listing-card";
+
+          const photos = document.createElement("div");
+          photos.className = "listing-photos";
+
+          const frontUrl = card.front_photo_path
+            ? photoUrls.get(card.front_photo_path)
+            : undefined;
+          const backUrl = card.back_photo_path
+            ? photoUrls.get(card.back_photo_path)
+            : undefined;
+
+          if (frontUrl) {
+            photos.append(
+              photoButton(
+                frontUrl,
+                `${card.name}: actual front`,
+                "Actual front",
+              ),
+            );
+          } else if (card.image_url) {
+            photos.append(
+              photoButton(
+                card.image_url,
+                `${card.name}: Scryfall reference`,
+                "Scryfall reference",
+              ),
+            );
+          }
+
+          if (backUrl) {
+            photos.append(
+              photoButton(backUrl, `${card.name}: actual back`, "Actual back"),
+            );
+          }
+
+          if (photos.childElementCount) item.append(photos);
+
+          const title = document.createElement("h4");
+          title.textContent = card.name;
+          item.append(title);
+
+          function paragraph(text: string, className = "") {
+            const element = document.createElement("p");
+            element.className = className;
+            element.textContent = text;
+            item.append(element);
+          }
+
+          paragraph(
+            `${card.set_name} #${card.collector_number} · ` +
+              `${finishName(card.finish)} · ${card.condition}`,
+          );
+          paragraph(
+            `${money.format(Number(card.asking_price_usd))} each · ` +
+              `Quantity: ${card.quantity}`,
+            "listing-price",
+          );
+
+          if (card.notes) paragraph(card.notes, "listing-notes");
+
+          if (
+            (card.front_photo_path && !frontUrl) ||
+            (card.back_photo_path && !backUrl)
+          ) {
+            paragraph("Some uploaded photos could not be loaded.");
+          }
+
+          const statusLabel = document.createElement("label");
+          statusLabel.textContent = "Listing status";
+
+          const statusSelect = document.createElement("select");
+          statusSelect.setAttribute(
+            "aria-label",
+            `Listing status for ${card.name}`,
+          );
+
+          for (const value of ["available", "pending", "sold"]) {
+            statusSelect.add(
+              new Option(value.charAt(0).toUpperCase() + value.slice(1), value),
+            );
+          }
+
+          statusSelect.value = card.status;
+          statusSelect.addEventListener("change", () => {
+            void changeStatus(card, statusSelect.value);
+          });
+
+          statusLabel.append(statusSelect);
+          item.append(statusLabel);
+          const actions = document.createElement("div");
+          actions.className = "listing-actions";
+          actions.append(
+            actionButton("Edit listing", () => openEditListing(card)),
+            actionButton("Remove listing", () => confirmRemoval(card)),
+          );
+          item.append(actions);
+          grid.append(item);
+        }
+
+        section.append(heading, grid);
+        groupsElement.append(section);
+      }
+
+      syncControls();
+    }
+
+    async function loadListings() {
+      const currentUser = userId;
+      const version = ++listVersion;
+      photoUrls.clear();
+      groupsElement.replaceChildren();
+
+      if (!currentUser) {
+        listings = [];
+        renderListings();
+        return;
+      }
+
+      listStatus.textContent = "Loading your listings…";
+
+      try {
+        const loaded: Listing[] = [];
+        const pageSize = 500;
+        for (let start = 0; ; start += pageSize) {
+          const { data, error } = await supabase
+            .from("sell_cards")
+            .select(
+              "id, name, set_name, collector_number, finish, asking_price_usd, quantity, condition, notes, status, color_group, image_url, front_photo_path, back_photo_path",
+            )
+            .eq("user_id", currentUser)
+            .neq("status", "sold")
+            .order("name", { ascending: true })
+            .order("id", { ascending: true })
+            .range(start, start + pageSize - 1);
+          if (version !== listVersion || userId !== currentUser) return;
+          if (error) throw error;
+          loaded.push(...((data ?? []) as Listing[]));
+          if (!data || data.length < pageSize) break;
+        }
+
+        const paths = [
+          ...new Set(
+            loaded.flatMap((card) =>
+              [card.front_photo_path, card.back_photo_path].filter(
+                (path): path is string => Boolean(path),
+              ),
+            ),
+          ),
+        ];
+
+        if (paths.length) {
+          const { data: signed } = await bucket.createSignedUrls(paths, 3600);
+
+          if (version !== listVersion || userId !== currentUser) return;
+
+          for (const result of signed ?? []) {
+            if (result.path && result.signedUrl) {
+              photoUrls.set(result.path, result.signedUrl);
+            }
+          }
+        }
+
+        listings = loaded;
+        renderListings();
+      } catch (error) {
+        if (version !== listVersion) return;
+        listStatus.textContent = `Couldn’t load listings: ${errorMessage(error)}`;
+      }
+    }
+
+    const saleDialog = root.querySelector<HTMLDialogElement>(".sale-dialog")!;
+    const saleForm = root.querySelector<HTMLFormElement>(".record-sale-form")!;
+    const saleFieldset =
+      saleForm.querySelector<HTMLFieldSetElement>("fieldset")!;
+    const salePrice =
+      root.querySelector<HTMLInputElement>("#actual-sale-price")!;
+    const saleQuantity = root.querySelector<HTMLInputElement>(
+      "#actual-sale-quantity",
+    )!;
+    const saleDate = root.querySelector<HTMLInputElement>("#actual-sale-date")!;
+    const saleError = root.querySelector<HTMLElement>(".sale-error")!;
+    const saleCardName = root.querySelector<HTMLElement>(".sale-card-name")!;
+    const historyList = root.querySelector<HTMLUListElement>(
+      ".sales-history-items",
+    )!;
+    const historyStatus = root.querySelector<HTMLElement>(
+      ".sales-history-status",
+    )!;
+    const salesTotal = root.querySelector<HTMLElement>(".sales-total")!;
+
+    interface Sale {
+      id: string;
+      listing_id: string | null;
+      image_url: string | null;
+      name: string;
+      set_name: string;
+      collector_number: string;
+      finish: string;
+      condition: string;
+      asking_price_usd: number | string;
+      sold_price_usd: number | string;
+      quantity: number;
+      sold_on: string;
+    }
+
+    let saleTarget: Listing | null = null;
+    let saleSeller: string | null = null;
+    let historyVersion = 0;
+    let recordingSale = false;
+
+    function openSaleDialog(card: Listing) {
+      if (busy || !userId) return;
+      saleTarget = card;
+      saleSeller = userId;
+      saleRequestId = crypto.randomUUID();
+      saleForm.reset();
+      saleError.textContent = "";
+      saleCardName.textContent = `${card.name} — ${card.set_name} #${card.collector_number}`;
+
+      salePrice.value = Number(card.asking_price_usd).toFixed(2);
+      saleQuantity.value = String(card.quantity);
+      saleQuantity.max = String(card.quantity);
+
+      saleDate.value = localDate();
+
+      saleDialog.showModal();
+      salePrice.focus();
+      salePrice.select();
+    }
+
+    root.querySelector(".cancel-sale")?.addEventListener("click", () => {
+      if (!recordingSale) saleDialog.close();
+    });
+
+    saleDialog.addEventListener("cancel", (event) => {
+      if (recordingSale) event.preventDefault();
+    });
+
+    saleDialog.addEventListener("close", () => {
+      saleTarget = null;
+      saleSeller = null;
+    });
+
+    async function loadSalesHistory() {
+      const seller = userId;
+      const version = ++historyVersion;
+      historyList.replaceChildren();
+      salesTotal.textContent = "";
+
+      if (!seller) {
+        historyStatus.textContent =
+          "Sign in to view your private sales history.";
+        return;
+      }
+
+      historyStatus.textContent = "Loading sales history…";
+
+      try {
+        const sales: Sale[] = [];
+        const pageSize = 500;
+
+        for (let start = 0; ; start += pageSize) {
+          const { data, error } = await supabase
+            .from("card_sales")
+            .select(
+              "id, listing_id, image_url, name, set_name, collector_number, finish, condition, asking_price_usd, sold_price_usd, quantity, sold_on",
+            )
+            .eq("user_id", seller)
+            .order("sold_on", { ascending: false })
+            .order("id", { ascending: false })
+            .range(start, start + pageSize - 1);
+
+          if (version !== historyVersion || seller !== userId) return;
+          if (error) throw error;
+
+          sales.push(...((data ?? []) as Sale[]));
+          if (!data || data.length < pageSize) break;
+        }
+
+        let totalCents = 0;
+        let copies = 0;
+
+        for (const sale of sales) {
+          totalCents +=
+            Math.round(Number(sale.sold_price_usd) * 100) * sale.quantity;
+          copies += sale.quantity;
+
+          const item = document.createElement("li");
+
+          if (sale.image_url) {
+            item.classList.add("has-reference");
+
+            const preview = photoButton(
+              sale.image_url,
+              `${sale.name} — Scryfall reference`,
+              "Scryfall reference",
+            );
+
+            preview.className = "history-reference";
+            item.append(preview);
+          }
+          const title = document.createElement("h3");
+          title.textContent = sale.name;
+
+          const details = document.createElement("p");
+          details.textContent =
+            `${sale.set_name} #${sale.collector_number} · ` +
+            `${finishName(sale.finish)} · ${sale.condition}`;
+
+          const amount = document.createElement("p");
+          amount.textContent =
+            `Sold ${sale.quantity} at ` +
+            `${money.format(Number(sale.sold_price_usd))} each · ` +
+            `Total: ${money.format(
+              (Math.round(Number(sale.sold_price_usd) * 100) * sale.quantity) /
+                100,
+            )}`;
+
+          const original = document.createElement("p");
+          original.textContent = `Asking price: ${money.format(Number(sale.asking_price_usd))} each`;
+
+          const date = document.createElement("p");
+          const time = document.createElement("time");
+          time.dateTime = sale.sold_on;
+
+          const [year, month, day] = sale.sold_on.split("-").map(Number);
+          time.textContent = new Date(year, month - 1, day).toLocaleDateString(
+            undefined,
+            { year: "numeric", month: "short", day: "numeric" },
+          );
+
+          date.append("Sold on ", time);
+          item.append(title, details, amount, original, date);
+          const actions = document.createElement("div");
+          actions.className = "history-actions";
+          actions.append(
+            actionButton("Edit sale", () => openHistoryEdit(sale)),
+            actionButton("Undo sale", () => confirmHistoryAction(sale, "undo")),
+            actionButton("Delete record", () =>
+              confirmHistoryAction(sale, "delete"),
+            ),
+          );
+          item.append(actions);
+          historyList.append(item);
+        }
+
+        historyStatus.textContent = sales.length
+          ? `${sales.length} recorded sales · ${copies} cards sold.`
+          : "No sales recorded yet.";
+
+        salesTotal.textContent = `Total sales revenue: ${money.format(totalCents / 100)}`;
+        syncControls();
+      } catch (error) {
+        if (version !== historyVersion || seller !== userId) return;
+
+        historyStatus.textContent = `Couldn’t load sales history: ${errorMessage(error)}`;
+      }
+    }
+
+    saleForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (
+        busy ||
+        recordingSale ||
+        !saleTarget ||
+        !userId ||
+        saleSeller !== userId ||
+        !saleForm.reportValidity()
+      )
+        return;
+
+      const card = saleTarget;
+      const seller = userId;
+      const actualPrice = Number(salePrice.value);
+      const count = Number(saleQuantity.value);
+
+      if (
+        !Number.isFinite(actualPrice) ||
+        actualPrice < 0 ||
+        !Number.isInteger(count) ||
+        count < 1 ||
+        count > card.quantity
+      ) {
+        saleError.textContent = "Check the sale price and quantity.";
+        return;
+      }
+
+      busy = true;
+      recordingSale = true;
+      saleFieldset.disabled = true;
+      syncControls();
+      saleError.textContent = "Recording sale…";
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (
+          authError ||
+          !auth.session ||
+          auth.session.user.id !== seller ||
+          seller !== userId
+        ) {
+          throw new Error("Please sign in again before recording the sale.");
+        }
+
+        const { error } = await supabase.rpc("record_card_sale_v2", {
+          p_request_id: saleRequestId,
+          p_listing_id: card.id,
+          p_sold_price_usd: actualPrice,
+          p_quantity: count,
+          p_sold_on: saleDate.value,
+        });
+
+        if (error) throw error;
+
+        saleDialog.close();
+
+        if (seller === userId) {
+          message.textContent =
+            `Recorded sale of ${count} ${card.name} at ` +
+            `${money.format(actualPrice)} each.`;
+
+          await Promise.all([loadListings(), loadSalesHistory()]);
+        }
+      } catch (error) {
+        if (seller === userId)
+          saleError.textContent = errorMessage(
+            error,
+            "Couldn’t record the sale.",
+          );
+      } finally {
+        recordingSale = false;
+        busy = false;
+        saleFieldset.disabled = false;
+        syncControls();
+      }
+    });
+
+    function actionButton(label: string, action: () => void) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = label;
+      button.textContent = label;
+      button.disabled = busy || !userId;
+      button.addEventListener("click", () => {
+        if (!busy && userId) action();
+      });
+      return button;
+    }
+
+    function openEditListing(card: Listing) {
+      if (busy || !userId) return;
+      editTarget = card;
+      editSeller = userId;
+      editForm.reset();
+      editError.textContent = "";
+      editName.textContent = `${card.name} — ${card.set_name} #${card.collector_number}`;
+      editPrice.value = Number(card.asking_price_usd).toFixed(2);
+      editQuantity.value = String(card.quantity);
+      editCondition.value = card.condition;
+      editNotes.value = card.notes;
+      editDialog.showModal();
+      editPrice.focus();
+    }
+
+    root.querySelector(".cancel-edit")?.addEventListener("click", () => {
+      if (!busy) editDialog.close();
+    });
+    root
+      .querySelector(".cancel-history-edit")
+      ?.addEventListener("click", () => {
+        if (!busy) historyEditDialog.close();
+      });
+    for (const dialog of [editDialog, historyEditDialog, confirmDialog]) {
+      dialog.addEventListener("cancel", (event) => {
+        if (busy) event.preventDefault();
+      });
+    }
+    editDialog.addEventListener("close", () => {
+      editTarget = null;
+      editSeller = null;
+    });
+    historyEditDialog.addEventListener("close", () => {
+      historyEditTarget = null;
+      historyEditSeller = null;
+    });
+    confirmDialog.addEventListener("close", () => {
+      confirmTask = null;
+      confirmSeller = null;
+    });
+
+    editForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (
+        busy ||
+        !editTarget ||
+        !userId ||
+        editSeller !== userId ||
+        !editForm.reportValidity()
+      )
+        return;
+      const card = editTarget;
+      const seller = userId;
+      busy = true;
+      editFieldset.disabled = true;
+      editError.textContent = "Saving changes…";
+      syncControls();
+      try {
+        await requireSeller(seller);
+        const { data, error } = await supabase
+          .from("sell_cards")
+          .update({
+            asking_price_usd: Number(editPrice.value),
+            quantity: Number(editQuantity.value),
+            condition: editCondition.value,
+            notes: editNotes.value.trim(),
+          })
+          .eq("id", card.id)
+          .eq("user_id", seller)
+          .eq("status", card.status)
+          .eq("quantity", card.quantity)
+          .eq("asking_price_usd", card.asking_price_usd)
+          .eq("condition", card.condition)
+          .eq("notes", card.notes)
+          .neq("status", "sold")
+          .select("id");
+        if (error) throw error;
+        if (!data?.length)
+          throw new Error(
+            "This listing changed in another tab. Close this form, reload, and try again.",
+          );
+        editDialog.close();
+        if (seller === userId) {
+          message.textContent = `Updated ${card.name}.`;
+          await loadListings();
+        }
+      } catch (error) {
+        if (seller === userId)
+          editError.textContent = errorMessage(
+            error,
+            "Couldn’t update listing.",
+          );
+      } finally {
+        busy = false;
+        editFieldset.disabled = false;
+        syncControls();
+      }
+    });
+
+    function openConfirmation(
+      title: string,
+      description: string,
+      label: string,
+      task: () => Promise<string>,
+    ) {
+      if (busy || !userId) return;
+      confirmSeller = userId;
+      confirmTask = task;
+      confirmHeading.textContent = title;
+      confirmDescription.textContent = description;
+      confirmAccept.textContent = label;
+      confirmError.textContent = "";
+      confirmDialog.showModal();
+      confirmCancel.focus();
+    }
+
+    confirmCancel.addEventListener("click", () => {
+      if (!busy) confirmDialog.close();
+    });
+    confirmAccept.addEventListener("click", async () => {
+      if (busy || !userId || !confirmTask || confirmSeller !== userId) return;
+      const seller = userId;
+      const task = confirmTask;
+      busy = true;
+      confirmAccept.disabled = true;
+      confirmCancel.disabled = true;
+      confirmError.textContent = "Saving change…";
+      syncControls();
+      try {
+        await requireSeller(seller);
+        const result = await task();
+        confirmDialog.close();
+        if (seller === userId) {
+          message.textContent = result;
+          await Promise.all([loadListings(), loadSalesHistory()]);
+        }
+      } catch (error) {
+        if (seller === userId)
+          confirmError.textContent = errorMessage(
+            error,
+            "Couldn’t save the change.",
+          );
+      } finally {
+        busy = false;
+        confirmAccept.disabled = false;
+        confirmCancel.disabled = false;
+        syncControls();
+      }
+    });
+
+    function confirmRemoval(card: Listing) {
+      const seller = userId;
+      if (!seller) return;
+      openConfirmation(
+        "Remove listing?",
+        `Remove ${card.name} from your Sell List? Existing sale records will stay in your private history. You would need to create a new listing to offer this card again.`,
+        "Remove listing",
+        async () => {
+          const { data, error } = await supabase
+            .from("sell_cards")
+            .delete()
+            .eq("id", card.id)
+            .eq("user_id", seller)
+            .eq("quantity", card.quantity)
+            .eq("status", card.status)
+            .neq("status", "sold")
+            .select("id");
+          if (error) throw error;
+          if (!data?.length)
+            throw new Error(
+              "The listing changed or was removed. Reload and try again.",
+            );
+          // The history is a snapshot, so its details survive listing removal.
+          const paths = [card.front_photo_path, card.back_photo_path].filter(
+            (path): path is string =>
+              Boolean(path && path.startsWith(`${seller}/`)),
+          );
+          let result = `Removed ${card.name} from your Sell List.`;
+          if (paths.length) {
+            try {
+              const { error: cleanupError } = await bucket.remove(paths);
+              if (cleanupError)
+                result += " Some unused photos could not be deleted.";
+            } catch {
+              result += " Some unused photos could not be deleted.";
+            }
+          }
+          return result;
+        },
+      );
+    }
+
+    function openHistoryEdit(sale: Sale) {
+      if (busy || !userId) return;
+      historyEditTarget = sale;
+      historyEditSeller = userId;
+      historyEditForm.reset();
+      historyEditName.textContent = `${sale.name} · ${sale.quantity} sold`;
+      historyEditPrice.value = Number(sale.sold_price_usd).toFixed(2);
+      historyEditDate.value = sale.sold_on;
+      historyEditError.textContent = "";
+      historyEditDialog.showModal();
+      historyEditPrice.focus();
+    }
+
+    historyEditForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (
+        busy ||
+        !historyEditTarget ||
+        !userId ||
+        historyEditSeller !== userId ||
+        !historyEditForm.reportValidity()
+      )
+        return;
+      const sale = historyEditTarget;
+      const seller = userId;
+      busy = true;
+      historyEditFieldset.disabled = true;
+      historyEditError.textContent = "Saving sale changes…";
+      syncControls();
+      try {
+        await requireSeller(seller);
+        const { error } = await supabase.rpc("manage_card_sale", {
+          p_sale_id: sale.id,
+          p_action: "edit",
+          p_sold_price_usd: Number(historyEditPrice.value),
+          p_sold_on: historyEditDate.value,
+        });
+        if (error) throw error;
+        historyEditDialog.close();
+        if (seller === userId) {
+          message.textContent = `Updated sale of ${sale.name}.`;
+          await loadSalesHistory();
+        }
+      } catch (error) {
+        if (seller === userId)
+          historyEditError.textContent = errorMessage(
+            error,
+            "Couldn’t update sale.",
+          );
+      } finally {
+        busy = false;
+        historyEditFieldset.disabled = false;
+        syncControls();
+      }
+    });
+
+    function confirmHistoryAction(sale: Sale, action: "undo" | "delete") {
+      const seller = userId;
+      if (!seller) return;
+      if (action === "undo" && !sale.listing_id) {
+        message.textContent =
+          "The original listing was removed. Create a new listing if you want to sell these cards again, then delete this history record if it was a mistake.";
+        message.scrollIntoView({ behavior: "auto", block: "center" });
+        return;
+      }
+      openConfirmation(
+        action === "undo" ? "Undo this sale?" : "Delete sale record?",
+        action === "undo"
+          ? `Return ${sale.quantity} ${sale.name} to Available and remove this sale from history and the revenue total?`
+          : `Delete this sale of ${sale.name} from your history and revenue total? This does not put the cards back up for sale. Use Undo sale to restock them.`,
+        action === "undo" ? "Undo sale" : "Delete record",
+        async () => {
+          const { error } = await supabase.rpc("manage_card_sale", {
+            p_sale_id: sale.id,
+            p_action: action,
+          });
+          if (error) throw error;
+          return action === "undo"
+            ? `Sale undone. Returned ${sale.quantity} ${sale.name} to Available.`
+            : `Deleted the sale record for ${sale.name}.`;
+        },
+      );
+    }
+
+    async function changeStatus(card: Listing, nextStatus: string) {
+      if (busy || !userId) return;
+
+      if (nextStatus === "sold") {
+        openSaleDialog(card);
+        renderListings();
+        return;
+      }
+
+      busy = true;
+      syncControls();
+
+      const seller = userId;
+
+      try {
+        const { data, error } = await supabase
+          .from("sell_cards")
+          .update({ status: nextStatus })
+          .eq("id", card.id)
+          .eq("user_id", seller)
+          .eq("status", card.status)
+          .eq("quantity", card.quantity)
+          .neq("status", "sold")
+          .select("id");
+
+        if (error) throw error;
+        if (!data?.length) throw new Error("The change wasn’t saved.");
+
+        if (seller === userId)
+          message.textContent = `${card.name} marked ${nextStatus}.`;
+      } catch (error) {
+        message.textContent = errorMessage(
+          error,
+          "Couldn’t change listing status.",
+        );
+      } finally {
+        busy = false;
+        await loadListings();
+        syncControls();
+      }
+    }
+
+    async function checkSignIn() {
+      const version = ++authVersion;
+      const { data, error } = await supabase.auth.getSession();
+      if (version !== authVersion) return;
+
+      const nextUser = error ? null : (data.session?.user.id ?? null);
+
+      if (nextUser !== userId) {
+        searchController?.abort();
+        form.reset();
+        form.hidden = true;
+        clearLocalPreviews();
+        printings = [];
+        listings = [];
+        saleDialog.close();
+        editDialog.close();
+        historyEditDialog.close();
+        confirmDialog.close();
+        editTarget = null;
+        historyEditTarget = null;
+        confirmTask = null;
+        historyList.replaceChildren();
+        salesTotal.textContent = "";
+        historyStatus.textContent = "";
+        historyVersion++;
+        photoDialog.close();
+        fullPhoto.removeAttribute("src");
+        message.textContent = "";
+      }
+
+      userId = nextUser;
+      authMessage.textContent = error
+        ? "Couldn’t check your sign-in. Reload and try again."
+        : userId
+          ? "Search for a card to add it to your Sell List."
+          : "Sign in using the account menu to create your Sell List.";
+
+      syncControls();
+      await Promise.all([loadListings(), loadSalesHistory()]);
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedFilter = button.dataset.filter ?? "all";
+
+        filterButtons.forEach((filter) => {
+          filter.setAttribute(
+            "aria-pressed",
+            String(filter.dataset.filter === selectedFilter),
+          );
+        });
+
+        renderListings();
+      });
+    });
+
+    printingSelect.addEventListener("change", showPrinting);
+    finishSelect.addEventListener("change", updateEstimate);
+    price.addEventListener("input", updatePriceComparison);
+
+    search.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (busy || !userId) return;
+
+      const name = query.value.trim();
+      if (!name) return;
+
+      busy = true;
+      syncControls();
+      form.hidden = true;
+      form.reset();
+      clearLocalPreviews();
+      printings = [];
+
+      const seller = userId;
+      const controller = new AbortController();
+      searchController = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 60000);
+      message.textContent = "Finding paper printings…";
+
+      try {
+        const namedUrl = new URL("https://api.scryfall.com/cards/named");
+        namedUrl.searchParams.set("fuzzy", name);
+
+        const namedResponse = await fetch(namedUrl, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+
+        if (!namedResponse.ok) {
+          throw new Error("Couldn’t identify that card. Try its full name.");
+        }
+
+        const named: Printing = await namedResponse.json();
+        if (!named.oracle_id) throw new Error("No matching card ID found.");
+
+        const endpoint = new URL("https://api.scryfall.com/cards/search");
+        endpoint.searchParams.set(
+          "q",
+          `oracleid:${named.oracle_id} game:paper`,
+        );
+        endpoint.searchParams.set("unique", "prints");
+        endpoint.searchParams.set("order", "released");
+
+        let next: string | undefined = endpoint.href;
+        const loaded: Printing[] = [];
+
+        while (next) {
+          controller.signal.throwIfAborted();
+          const url = new URL(next);
+
+          if (url.origin !== "https://api.scryfall.com") {
+            throw new Error("Unexpected printing search address.");
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, 150));
+
+          const response = await fetch(url, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              response.status === 429
+                ? "Scryfall is busy. Try again shortly."
+                : "Couldn’t load paper printings.",
+            );
+          }
+
+          const page: {
+            data: Printing[];
+            has_more: boolean;
+            next_page?: string;
+          } = await response.json();
+
+          loaded.push(
+            ...page.data.filter(
+              (card) => card.oracle_id && card.finishes.length,
+            ),
+          );
+          next = page.has_more ? page.next_page : undefined;
+        }
+
+        controller.signal.throwIfAborted();
+        if (seller !== userId) return;
+        if (!loaded.length) throw new Error("No paper printings found.");
+
+        printings = loaded;
+        printingSelect.replaceChildren();
+
+        printings.forEach((card, index) => {
+          printingSelect.add(
+            new Option(
+              `${card.name} — ${card.set_name} #${card.collector_number}`,
+              String(index),
+            ),
+          );
+        });
+
+        showPrinting();
+        form.hidden = false;
+        message.textContent = `Found ${named.name}. Choose your printing and sale details.`;
+      } catch (error) {
+        if (seller === userId) {
+          message.textContent = controller.signal.aborted
+            ? "Search interrupted or timed out. Please try again."
+            : error instanceof Error
+              ? error.message
+              : "Search failed.";
+        }
+      } finally {
+        window.clearTimeout(timeout);
+        busy = false;
+        syncControls();
+      }
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (busy || !userId || !form.reportValidity()) return;
+
+      const card = printings[Number(printingSelect.value)];
+      const selectedFinish = finishSelect.value;
+      if (!card?.oracle_id || !card.finishes.includes(selectedFinish)) return;
+
+      const frontFile = front.files?.[0];
+      const backFile = back.files?.[0];
+      const askingPrice = Number(price.value);
+      const count = Number(quantity.value);
+      const selectedCondition = condition.value;
+      const savedNotes = notes.value.trim();
+
+      try {
+        validatePhoto(frontFile);
+        validatePhoto(backFile);
+
+        if (
+          !Number.isFinite(askingPrice) ||
+          askingPrice < 0 ||
+          askingPrice > 99999999.99 ||
+          !Number.isInteger(count) ||
+          count < 1 ||
+          count > 10000
+        ) {
+          throw new Error("Check your asking price and quantity.");
+        }
+      } catch (error) {
+        message.textContent = (error as Error).message;
+        return;
+      }
+
+      busy = true;
+      syncControls();
+      message.textContent = "Saving your listing…";
+
+      const uploaded: string[] = [];
+      let saved = false;
+
+      try {
+        const { data: auth, error: authError } =
+          await supabase.auth.getSession();
+
+        if (authError || !auth.session || auth.session.user.id !== userId) {
+          throw new Error("Please sign in again before saving.");
+        }
+
+        const seller = auth.session.user.id;
+        const listingId = crypto.randomUUID();
+
+        async function uploadPhoto(file: File | undefined, side: string) {
+          if (!file) return null;
+
+          const extension =
+            file.type === "image/jpeg"
+              ? "jpg"
+              : file.type === "image/png"
+                ? "png"
+                : "webp";
+          const path = `${seller}/${listingId}/${side}-${crypto.randomUUID()}.${extension}`;
+
+          const { error } = await bucket.upload(path, file, {
+            contentType: file.type,
+            upsert: false,
+          });
+
+          if (error) throw new Error(`Photo upload failed: ${error.message}`);
+          uploaded.push(path);
+          return path;
+        }
+
+        const frontPath = await uploadPhoto(frontFile, "front");
+        const backPath = await uploadPhoto(backFile, "back");
+
+        if (seller !== userId)
+          throw new Error("Your signed-in account changed.");
+
+        const { error } = await supabase.from("sell_cards").insert({
+          id: listingId,
+          user_id: seller,
+          scryfall_id: card.id,
+          oracle_id: card.oracle_id,
+          name: card.name,
+          set_name: card.set_name,
+          collector_number: card.collector_number,
+          finish: selectedFinish,
+          image_url: imageFor(card),
+          scryfall_uri: card.scryfall_uri,
+          asking_price_usd: askingPrice,
+          quantity: count,
+          condition: selectedCondition,
+          notes: savedNotes,
+          front_photo_path: frontPath,
+          back_photo_path: backPath,
+          color_group: groupFor(card),
+          status: "available",
+        });
+
+        if (error) throw new Error(`Couldn’t save listing: ${error.message}`);
+
+        saved = true;
+        form.reset();
+        form.hidden = true;
+        clearLocalPreviews();
+        query.value = "";
+        message.textContent = `Saved ${card.name} to your Sell List.`;
+        await loadListings();
+      } catch (error) {
+        message.textContent =
+          error instanceof Error ? error.message : "Couldn’t save listing.";
+
+        if (!saved && uploaded.length) {
+          const { error } = await bucket.remove(uploaded);
+          if (error) {
+            message.textContent +=
+              " Some uploaded photos could not be cleaned up.";
+          }
+        }
+      } finally {
+        busy = false;
+        syncControls();
+      }
+    });
+
+    photoDialog.addEventListener("click", (event) => {
+      if (event.target !== photoDialog) return;
+      const bounds = photoDialog.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      )
+        photoDialog.close();
+    });
+
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "TOKEN_REFRESHED") return;
+      window.setTimeout(() => void checkSignIn(), 0);
+    });
+
+    // Refresh signed photo links when returning to this tab.
+    document.addEventListener("visibilitychange", () => {
+      if (
+        !document.hidden &&
+        userId &&
+        !busy &&
+        !root.querySelector("dialog[open]")
+      ) {
+        void Promise.all([loadListings(), loadSalesHistory()]);
+      }
+    });
+
+    void checkSignIn();
+  }
+</script>
+
+<style>
+  .sell-tools {
+    color: var(--color-brand-text);
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .sell-auth,
+  .sell-message,
+  .list-status,
+  .help {
+    margin-block: 1rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+  }
+
+  .help {
+    font-size: 0.875rem;
+  }
+
+  .reference-label {
+    text-align: center;
+  }
+
+  .sell-search,
+  .sell-form {
+    margin-top: 1.5rem;
+  }
+
+  .search-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .search-row input {
+    flex: 1 1 220px;
+  }
+
+  label {
+    display: block;
+    margin-block: 1rem 0.5rem;
+    font-weight: 600;
+  }
+
+  input,
+  select,
+  textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--color-pyroduck-lime);
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  fieldset {
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+  }
+
+  legend {
+    padding-inline: 0.5rem;
+    font-weight: 700;
+  }
+
+  .field-grid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .reference-image,
+  .upload-preview {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    height: auto;
+    max-height: 380px;
+    object-fit: contain;
+    margin: 1.5rem auto 0;
+    border-radius: 0.75rem;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  .saved-section {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-pyroduck-plasma);
+  }
+
+  .color-filters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .color-filters button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 82px;
+    padding: 0.75rem;
+    border-color: var(--color-pyroduck-plasma);
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font-size: 0.75rem;
+  }
+
+  .color-filters button[aria-pressed="true"] {
+    border-color: var(--color-pyroduck-lime);
+    box-shadow: 0 0 0 1px var(--color-pyroduck-lime);
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .color-filters button:hover {
+    background: var(--color-pyroduck-afterdark);
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .color-filters img,
+  .filter-icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+  }
+
+  .all-icon {
+    color: var(--color-pyroduck-plasma);
+    font-size: 1.75rem;
+  }
+
+  .multicolor-icon {
+    box-sizing: border-box;
+    border: 2px solid #c9a750;
+    border-radius: 50%;
+    background: conic-gradient(
+      #f8e7b9 0deg 72deg,
+      #58a6d4 72deg 144deg,
+      #51485f 144deg 216deg,
+      #dc6652 216deg 288deg,
+      #5d9b6b 288deg 360deg
+    );
+  }
+
+  .land-icon {
+    border-radius: 50%;
+    background: #a68b65;
+    color: #211a12;
+  }
+
+  .land-icon svg {
+    width: 26px;
+    height: 26px;
+  }
+
+  .listing-groups :global(.listing-group) {
+    margin-top: 2rem;
+  }
+
+  .listing-groups :global(.group-heading) {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-lime);
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .listing-groups :global(.listing-grid) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .listing-groups :global(.listing-card) {
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-void);
+  }
+
+  .listing-groups :global(h4) {
+    margin-top: 1rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .listing-groups :global(p) {
+    margin-top: 0.75rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+  }
+
+  .listing-groups :global(.listing-price) {
+    color: var(--color-pyroduck-lime);
+    font-weight: 700;
+  }
+
+  .listing-groups :global(.listing-notes) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .listing-groups :global(.listing-photos) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .listing-groups :global(.listing-photo) {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-brand-muted);
+    cursor: zoom-in;
+  }
+
+  .listing-groups :global(.listing-photo img) {
+    display: block;
+    width: 100%;
+    height: 220px;
+    object-fit: contain;
+  }
+
+  .listing-groups :global(.listing-photo span) {
+    display: block;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .listing-groups :global(label) {
+    display: block;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+  }
+
+  .listing-groups :global(select) {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .listing-groups :global(button:focus-visible),
+  .listing-groups :global(select:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .photo-dialog {
+    width: min(800px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  .photo-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .photo-dialog form {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .photo-title {
+    margin-block: 1rem;
+  }
+
+  .full-photo {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: 75dvh;
+    margin-inline: auto;
+    object-fit: contain;
+  }
+
+  @media (min-width: 640px) {
+    .field-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .sale-dialog,
+  .edit-dialog,
+  .history-edit-dialog,
+  .confirm-dialog {
+    width: min(520px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.5rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  .sale-dialog::backdrop,
+  .edit-dialog::backdrop,
+  .history-edit-dialog::backdrop,
+  .confirm-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .sale-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .sales-total {
+    margin-block: 1rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .sales-history-items {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sales-history-items :global(li) {
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-void);
+  }
+
+  .sales-history-items :global(h3) {
+    font-weight: 700;
+    color: var(--color-brand-text);
+  }
+
+  .sales-history-items :global(p) {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+  }
+  .listing-groups :global(.listing-actions),
+  .sales-history-items :global(.history-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .listing-groups :global(.listing-actions button),
+  .sales-history-items :global(button) {
+    min-height: 44px;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-brand-text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .listing-groups :global(.listing-actions button:hover:not(:disabled)),
+  .sales-history-items :global(button:hover:not(:disabled)) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .sales-history-items :global(button:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .listing-groups :global(button:disabled),
+  .sales-history-items :global(button:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .sales-history-status {
+    margin-top: 1rem;
+    color: var(--color-brand-muted);
+  }
+  .sales-history-items :global(li.has-reference) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    column-gap: 1.25rem;
+  }
+
+  .sales-history-items :global(li.has-reference > :not(.history-reference)) {
+    grid-column: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .sales-history-items :global(.history-reference) {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+    align-self: center;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    cursor: zoom-in;
+  }
+
+  .sales-history-items :global(.history-reference img) {
+    display: block;
+    width: 100%;
+    max-height: 210px;
+    object-fit: contain;
+  }
+
+  .sales-history-items :global(.history-reference span) {
+    display: block;
+    padding: 0.4rem;
+    font-size: 0.7rem;
+    color: var(--color-brand-muted);
+  }
+
+  @media (max-width: 479px) {
+    .sales-history-items :global(li.has-reference) {
+      grid-template-columns: minmax(0, 1fr) 95px;
+      column-gap: 0.75rem;
+    }
+  }
+</style>

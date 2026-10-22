@@ -41,7 +41,7 @@
   >
   </ul>
 
-    <p class="mt-3 text-sm text-brand-muted">
+  <p class="mt-3 text-sm text-brand-muted">
     Card information, images, and price estimates provided by{" "}
     <a
       href="https://scryfall.com"
@@ -92,6 +92,7 @@
 
   interface Card {
     id: string;
+    oracle_id?: string;
     name: string;
     scryfall_uri: string;
     prints_search_uri: string;
@@ -410,6 +411,7 @@
 
       const { error } = await supabase.from("chase_cards").insert({
         scryfall_id: card.id,
+        oracle_id: card.oracle_id ?? null,
         name: card.name,
         set_name: card.set_name,
         collector_number: card.collector_number,
