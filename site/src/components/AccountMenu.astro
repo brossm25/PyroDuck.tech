@@ -3,13 +3,26 @@
     <summary class="account-login-trigger">Log in</summary>
 
     <div class="account-panel">
-      <p class="account-panel-heading">Chase list account</p>
+      <p class="account-panel-heading">BinderLink account</p>
 
       <form class="account-form">
         <label>
-          Email
-          <input name="email" type="email" required autocomplete="email" />
+          Email address
+          <input
+            name="email"
+            type="email"
+            required
+            autocomplete="email"
+            inputmode="email"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="you@example.com"
+          />
         </label>
+
+        <p class="account-help">
+          Sign in with the email address you registered with, not your username.
+        </p>
 
         <label>
           Password
@@ -21,6 +34,23 @@
             autocomplete="current-password"
           />
         </label>
+
+        <div class="account-password-tools">
+          <button
+            type="button"
+            class="account-secondary account-show-password"
+            aria-pressed="false"
+          >
+            Show password
+          </button>
+
+          <button
+            type="button"
+            class="account-secondary account-forgot-password"
+          >
+            Forgot password?
+          </button>
+        </div>
 
         <div class="account-actions">
           <button
@@ -40,7 +70,7 @@
           </button>
         </div>
 
-        <p class="account-form-status" role="status"></p>
+        <p class="account-form-status" role="status" aria-live="polite"></p>
       </form>
     </div>
   </details>
@@ -316,6 +346,96 @@
     }
   }
 
+  function concealPasswords() {
+    forms.forEach((form) => {
+      const password =
+        form.querySelector<HTMLInputElement>('[name="password"]');
+      const toggle = form.querySelector<HTMLButtonElement>(
+        ".account-show-password",
+      );
+
+      if (password) password.type = "password";
+
+      if (toggle) {
+        toggle.textContent = "Show password";
+        toggle.setAttribute("aria-pressed", "false");
+      }
+    });
+  }
+
+  forms.forEach((form) => {
+    const password = form.querySelector<HTMLInputElement>('[name="password"]');
+    const toggle = form.querySelector<HTMLButtonElement>(
+      ".account-show-password",
+    );
+    const forgot = form.querySelector<HTMLButtonElement>(
+      ".account-forgot-password",
+    );
+
+    toggle?.addEventListener("click", () => {
+      if (!password) return;
+
+      const reveal = password.type === "password";
+      password.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? "Hide password" : "Show password";
+      toggle.setAttribute("aria-pressed", String(reveal));
+    });
+
+    form.addEventListener("reset", concealPasswords);
+
+    form.closest("details")?.addEventListener("toggle", (event) => {
+      const menu = event.currentTarget as HTMLDetailsElement;
+      if (!menu.open) concealPasswords();
+    });
+
+    forgot?.addEventListener("click", async () => {
+      if (busy) return;
+
+      const emailInput = form.querySelector<HTMLInputElement>('[name="email"]');
+
+      if (!emailInput) return;
+
+      emailInput.value = emailInput.value.trim();
+
+      if (!emailInput.reportValidity()) {
+        setFormStatus(
+          "Enter your registered email address to request a reset link.",
+        );
+        emailInput.focus();
+        return;
+      }
+
+      setBusy(true);
+      setFormStatus("Requesting a password reset email…");
+
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(
+          emailInput.value,
+          {
+            redirectTo: new URL("/mtg/reset-password/", window.location.origin)
+              .href,
+          },
+        );
+
+        if (error) throw error;
+
+        setFormStatus(
+          "If an account exists for that email, you’ll receive a password reset link. Check your inbox and spam folder.",
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+
+        setFormStatus(
+          message.toLowerCase().includes("invalid login credentials")
+            ? "The email or password wasn’t recognized. Use your registered email address, or choose Forgot password."
+            : message,
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
+  });
+
   forms.forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -369,7 +489,13 @@
         await refreshSession();
         window.dispatchEvent(new Event("chase-cards-changed"));
       } catch (error) {
-        setFormStatus(errorMessage(error));
+        const message = errorMessage(error);
+
+        setFormStatus(
+          message.toLowerCase().includes("invalid login credentials")
+            ? "The email or password wasn’t recognized. Use your registered email address, or choose Forgot password."
+            : message,
+        );
       } finally {
         setBusy(false);
       }
@@ -715,5 +841,24 @@
     .account-options {
       width: 15rem;
     }
+  }
+
+  .account-help {
+    margin: -0.5rem 0 0;
+    color: var(--color-brand-muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .account-password-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .account-password-tools button {
+    flex: 1 1 auto;
+    padding-inline: 0.65rem;
+    font-size: 0.8rem;
   }
 </style>
