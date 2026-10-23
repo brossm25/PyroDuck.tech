@@ -132,16 +132,29 @@ import Layout from "@/layouts/Layout.astro";
 
       userId = session.user.id;
 
-      const { data, error } = await supabase
-        .from("decks")
-        .select("id, name, visibility, created_at")
-        .eq("user_id", userId)
-        .order("name", { ascending: true });
+      const decks: Deck[] = [];
+      const pageSize = 100;
+      let offset = 0;
 
-      if (currentRequest !== requestId) return;
-      if (error) throw error;
+      while (true) {
+        const { data, error } = await supabase
+          .from("decks")
+          .select("id, name, visibility, created_at")
+          .eq("user_id", userId)
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
 
-      const decks = (data ?? []) as Deck[];
+        if (currentRequest !== requestId) return;
+        if (error) throw error;
+
+        const page = (data ?? []) as Deck[];
+        decks.push(...page);
+
+        if (page.length === 0) break;
+
+        offset += page.length;
+      }
       renderDecks(decks);
       setStatus(
         decks.length
