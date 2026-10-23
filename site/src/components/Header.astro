@@ -19,7 +19,7 @@ const navigation = [
 
 <header class="sticky top-0 z-50 bg-pyroduck-void">
   <div
-    class="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:flex sm:gap-4 sm:px-6 lg:px-8"
+    class="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2 sm:px-6 xl:flex xl:gap-4 xl:px-8"
   >
     <!-- Logo -->
     <a
@@ -50,7 +50,7 @@ const navigation = [
 
     <!-- Mobile navigation -->
     <details
-      class="group relative col-start-3 row-start-1 justify-self-end sm:hidden"
+      class="group relative col-start-3 row-start-1 justify-self-end xl:hidden"
       data-header-menu
     >
       <summary
@@ -118,7 +118,7 @@ const navigation = [
     <!-- Desktop navigation -->
     <nav
       aria-label="Main navigation"
-      class="desktop-navigation ml-auto hidden items-center gap-1 sm:flex"
+      class="desktop-navigation ml-auto hidden items-center gap-1 xl:flex"
     >
       <ul class="flex items-center gap-1">
         {
@@ -348,9 +348,33 @@ const navigation = [
     color: var(--color-pyroduck-lime);
   }
 
-  @media (min-width: 640px) {
+  @media (max-width: 1279px) {
+    .mobile-navigation {
+      max-height: calc(100dvh - 10rem);
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .mobile-navigation :global(.friends-panel),
+    .mobile-navigation :global(.account-panel) {
+      position: static;
+      width: 100%;
+      max-width: 100%;
+      max-height: none;
+      margin-top: 0.5rem;
+      overflow: visible;
+      box-shadow: none;
+    }
+
+    .mobile-navigation :global(.friends-trigger) {
+      padding: 0.75rem 1rem;
+      font-size: 1.125rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
     .desktop-navigation {
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       justify-content: flex-end;
     }
 
@@ -359,13 +383,6 @@ const navigation = [
       padding: 0.5rem 0.65rem;
       white-space: nowrap;
       font-size: 1rem;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .desktop-navigation .header-link {
-      padding-inline: 0.85rem;
-      font-size: 1.125rem;
     }
   }
 </style>

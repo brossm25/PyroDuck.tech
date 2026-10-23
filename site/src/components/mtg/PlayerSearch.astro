@@ -99,9 +99,10 @@
       const item = document.createElement("li");
       item.className = "player-result";
 
-      const name = document.createElement("p");
+      const name = document.createElement("a");
       name.className = "player-result-name";
-      name.textContent = player.display_name;
+      name.href = `/mtg/player?id=${encodeURIComponent(player.id)}`;
+      name.textContent = player.display_name || player.username;
 
       const username = document.createElement("p");
       username.className = "player-result-username";
@@ -490,9 +491,22 @@
   }
 
   .player-search-results :global(.player-result-name) {
+    display: inline-block;
     margin: 0;
+    border-radius: 0.25rem;
     color: var(--color-pyroduck-lime);
     font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .player-search-results :global(.player-result-name:hover) {
+    color: var(--color-pyroduck-plasma);
+  }
+
+  .player-search-results :global(.player-result-name:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
   }
 
   .player-search-results :global(.player-result-username) {

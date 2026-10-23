@@ -29,6 +29,23 @@
     document.querySelectorAll<HTMLDetailsElement>(".friends-menu"),
   );
 
+  const duckyPlayerId = "297b9756-34b9-4071-b21f-94517e7117c2";
+  const dismissedWelcomeUsers = new Set<string>();
+
+  function welcomeKey(id: string) {
+    return `binderlink:welcome-dismissed:${id}`;
+  }
+
+  function welcomeDismissed(id: string) {
+    if (dismissedWelcomeUsers.has(id)) return true;
+
+    try {
+      return localStorage.getItem(welcomeKey(id)) === "true";
+    } catch {
+      return false;
+    }
+  }
+
   let friendships: Friendship[] = [];
   let userId: string | null = null;
   let loading = false;
@@ -72,6 +89,95 @@
 
       if (!userId || loading) return;
 
+      if (userId !== duckyPlayerId && !welcomeDismissed(userId)) {
+        const welcome = document.createElement("div");
+        welcome.className = "friend-row welcome-connection";
+
+        const eyebrow = document.createElement("p");
+        eyebrow.className = "welcome-label";
+        eyebrow.textContent = "Your first connection";
+
+        const link = document.createElement("a");
+        link.className = "friend-name welcome-name";
+        link.href = `/mtg/player?id=${encodeURIComponent(duckyPlayerId)}`;
+        link.textContent = "Ducky ";
+
+        const duck = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "svg",
+        );
+
+        duck.setAttribute("viewBox", "0 0 64 64");
+        duck.setAttribute("width", "24");
+        duck.setAttribute("height", "24");
+        duck.setAttribute("aria-hidden", "true");
+        duck.classList.add("welcome-duck");
+
+        duck.innerHTML = `
+          <path
+            d="M45 26h13c3 0 4 4 1 6l-13 5"
+            fill="white"
+          />
+          <path
+            d="M29 34c-5-5-5-11-2-16 3-6 11-8 17-5
+               7 3 10 12 6 19l-4 7c7 1 11 5 10 10
+               -1 8-11 12-25 12C15 61 6 54 7 42
+               c0-5 2-9 5-12 2 7 8 10 17 4Z"
+            fill="white"
+          />
+          <circle cx="42" cy="23" r="2.5" fill="black" />
+        `;
+
+        link.append(duck);
+
+        link.addEventListener("click", () => {
+          document
+            .querySelectorAll<HTMLDetailsElement>("header details")
+            .forEach((details) => {
+              details.open = false;
+            });
+        });
+
+        const introduction = document.createElement("p");
+        introduction.className = "welcome-description";
+        introduction.textContent =
+          "Welcome to BinderLink! I’m Ducky, the creator. Every collection starts with a connection.";
+
+        const explanation = document.createElement("p");
+        explanation.className = "welcome-note";
+        explanation.textContent =
+          "A welcome connection, separate from your friends. Friends-only cards and decks stay between accepted friends.";
+
+        const actions = document.createElement("div");
+        actions.className = "friend-actions";
+
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "friend-button";
+        dismiss.textContent = "Dismiss welcome";
+        dismiss.setAttribute("aria-label", "Dismiss Ducky’s welcome card");
+
+        dismiss.addEventListener("click", () => {
+          if (!userId) return;
+
+          dismissedWelcomeUsers.add(userId);
+
+          try {
+            localStorage.setItem(welcomeKey(userId), "true");
+          } catch {
+            // Still dismiss it for this page if storage is unavailable.
+          }
+
+          render();
+
+          menu.querySelector<HTMLElement>("summary")?.focus();
+        });
+
+        actions.append(dismiss);
+        welcome.append(eyebrow, link, introduction, explanation, actions);
+        content.append(welcome);
+      }
+
       function addGroup(title: string, items: Friendship[]) {
         if (!items.length || !content) return;
 
@@ -86,9 +192,18 @@
           const row = document.createElement("li");
           row.className = "friend-row";
 
-          const name = document.createElement("p");
+          const name = document.createElement("a");
           name.className = "friend-name";
-          name.textContent = item.display_name;
+          name.href = `/mtg/player?id=${encodeURIComponent(item.player_id)}`;
+          name.textContent = item.display_name || item.username;
+
+          name.addEventListener("click", () => {
+            document
+              .querySelectorAll<HTMLDetailsElement>("header details")
+              .forEach((details) => {
+                details.open = false;
+              });
+          });
 
           const username = document.createElement("p");
           username.className = "friend-username";
@@ -418,9 +533,22 @@
   }
 
   .friends-content :global(.friend-name) {
+    display: inline-block;
     margin: 0;
-    color: var(--color-brand-text);
+    border-radius: 0.25rem;
+    color: var(--color-pyroduck-plasma);
     font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .friends-content :global(.friend-name:hover) {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .friends-content :global(.friend-name:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
   }
 
   .friends-content :global(.friend-username) {
@@ -477,7 +605,7 @@
     margin: 0;
   }
 
-  @media (min-width: 640px) {
+  @media (min-width: 1280px) {
     .friends-trigger {
       padding: 0.5rem 0.65rem;
       font-size: 1rem;
@@ -497,10 +625,48 @@
     }
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1536px) {
     .friends-trigger {
       padding-inline: 0.85rem;
       font-size: 1.125rem;
     }
+  }
+
+  .friends-content :global(.welcome-connection) {
+    margin-bottom: 1rem;
+    border-color: var(--color-pyroduck-plasma);
+  }
+
+  .friends-content :global(.welcome-label) {
+    margin: 0 0 0.5rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .friends-content :global(.welcome-description) {
+    margin: 0.75rem 0 0;
+    color: var(--color-brand-text);
+    line-height: 1.6;
+  }
+
+  .friends-content :global(.welcome-note) {
+    margin: 0.5rem 0 0;
+    color: var(--color-brand-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+
+  .friends-content :global(.welcome-name) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+
+  .friends-content :global(.welcome-name .welcome-duck) {
+    margin-left: 0;
   }
 </style>

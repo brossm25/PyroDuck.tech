@@ -1,0 +1,653 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout
+  title="Player Profile | BinderLink"
+  description="Explore a BinderLink player’s shared decks, chase cards, and available sale listings."
+>
+  <section class="px-6 py-12 sm:py-16">
+    <div class="player-page mx-auto max-w-5xl">
+      <a href="/mtg" class="player-link">← Back to BinderLink</a>
+
+      <div class="player-heading">
+        <div>
+          <h1 class="player-name">Player profile</h1>
+          <p class="player-handle"></p>
+        </div>
+
+        <button type="button" class="player-share" disabled>
+          Copy profile link
+        </button>
+      </div>
+
+      <p class="player-status" role="status" aria-live="polite">
+        Loading player…
+      </p>
+
+      <div class="player-content" hidden>
+        <nav class="player-sections" aria-label="Player sections">
+          <a href="#player-chase">Chase list</a>
+          <a href="#player-decks">Decks</a>
+          <a href="#player-sales">Cards for sale</a>
+        </nav>
+
+        <section id="player-chase" class="player-section">
+          <h2>Chase list</h2>
+          <p class="section-status chase-status" role="status"></p>
+          <ul class="player-cards chase-items"></ul>
+        </section>
+
+        <section id="player-decks" class="player-section">
+          <h2>Shared decks</h2>
+          <p class="section-status decks-status" role="status"></p>
+          <ul class="player-decks deck-items"></ul>
+        </section>
+
+        <section id="player-sales" class="player-section">
+          <h2>Cards for sale</h2>
+          <p class="section-status sales-status" role="status"></p>
+          <ul class="player-cards sale-items"></ul>
+        </section>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+
+  interface Player {
+    id: string;
+    username: string;
+    display_name: string;
+  }
+
+  interface Card {
+    id: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    image_url: string | null;
+  }
+
+  interface SaleCard extends Card {
+    asking_price_usd: number | string;
+    quantity: number;
+    condition: string;
+  }
+
+  interface Deck {
+    id: string;
+    name: string;
+    visibility: string;
+  }
+
+  interface QueryResult {
+    data: unknown[] | null;
+    error: { message: string } | null;
+  }
+
+  const root = document.querySelector<HTMLElement>(".player-page");
+
+  if (root) {
+    const heading = root.querySelector<HTMLElement>(".player-name")!;
+    const handle = root.querySelector<HTMLElement>(".player-handle")!;
+    const status = root.querySelector<HTMLElement>(".player-status")!;
+    const content = root.querySelector<HTMLElement>(".player-content")!;
+    const share = root.querySelector<HTMLButtonElement>(".player-share")!;
+
+    const chaseList = root.querySelector<HTMLUListElement>(".chase-items")!;
+    const deckList = root.querySelector<HTMLUListElement>(".deck-items")!;
+    const saleList = root.querySelector<HTMLUListElement>(".sale-items")!;
+
+    const chaseStatus = root.querySelector<HTMLElement>(".chase-status")!;
+    const decksStatus = root.querySelector<HTMLElement>(".decks-status")!;
+    const salesStatus = root.querySelector<HTMLElement>(".sales-status")!;
+
+    const playerId = new URLSearchParams(window.location.search).get("id");
+    const validId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    const money = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    let version = 0;
+    let viewerId: string | null = null;
+
+    function clearPage() {
+      heading.textContent = "Player profile";
+      handle.textContent = "";
+      content.hidden = true;
+      share.disabled = true;
+      chaseList.replaceChildren();
+      deckList.replaceChildren();
+      saleList.replaceChildren();
+    }
+
+    function text(parent: HTMLElement, className: string, value: string) {
+      const paragraph = document.createElement("p");
+      paragraph.className = className;
+      paragraph.textContent = value;
+      parent.append(paragraph);
+    }
+
+    function finishLabel(value: string) {
+      if (value === "nonfoil") return "Nonfoil";
+      if (value === "foil") return "Foil";
+      if (value === "etched") return "Etched foil";
+      return value;
+    }
+
+    function cardItem(card: Card) {
+      const item = document.createElement("li");
+
+      if (card.image_url) {
+        try {
+          const url = new URL(card.image_url);
+
+          if (
+            url.protocol === "https:" &&
+            (url.hostname === "scryfall.io" ||
+              url.hostname.endsWith(".scryfall.io") ||
+              url.hostname === "scryfall.com" ||
+              url.hostname.endsWith(".scryfall.com"))
+          ) {
+            const image = document.createElement("img");
+            image.src = url.href;
+            image.alt = card.name;
+            image.loading = "lazy";
+            image.width = 488;
+            image.height = 680;
+            item.append(image);
+          }
+        } catch {
+          // Keep the card details visible if its image URL is invalid.
+        }
+      }
+
+      text(item, "card-name", card.name);
+      text(
+        item,
+        "card-meta",
+        `${card.set_name} #${card.collector_number} · ${finishLabel(card.finish)}`,
+      );
+
+      return item;
+    }
+
+    async function readAll(
+      query: (from: number, to: number) => PromiseLike<QueryResult>,
+      active: number,
+    ) {
+      const rows: unknown[] = [];
+
+      for (let from = 0; ; from += 100) {
+        if (active !== version) return null;
+
+        const { data, error } = await query(from, from + 99);
+
+        if (active !== version) return null;
+        if (error) throw new Error(error.message);
+
+        const batch = data ?? [];
+        rows.push(...batch);
+
+        if (batch.length < 100) return rows;
+      }
+    }
+
+    async function loadChase(active: number) {
+      chaseStatus.textContent = "Loading chase cards…";
+
+      try {
+        const rows = await readAll(
+          (from, to) =>
+            supabase
+              .from("chase_cards")
+              .select("id, name, set_name, collector_number, finish, image_url")
+              .eq("user_id", playerId!)
+              .order("name")
+              .order("id")
+              .range(from, to),
+          active,
+        );
+
+        if (!rows || active !== version) return;
+
+        chaseList.replaceChildren(
+          ...(rows as Card[]).map((card) => cardItem(card)),
+        );
+
+        chaseStatus.textContent = rows.length
+          ? `${rows.length} saved ${rows.length === 1 ? "card" : "cards"}.`
+          : "No chase cards to display. This list may be empty or not shared with you.";
+      } catch {
+        if (active === version) {
+          chaseStatus.textContent =
+            "Couldn’t load this chase list. Refresh to try again.";
+        }
+      }
+    }
+
+    async function loadDecks(active: number) {
+      decksStatus.textContent = "Loading shared decks…";
+
+      try {
+        const rows = await readAll(
+          (from, to) =>
+            supabase
+              .from("decks")
+              .select("id, name, visibility")
+              .eq("user_id", playerId!)
+              .order("name")
+              .order("id")
+              .range(from, to),
+          active,
+        );
+
+        if (!rows || active !== version) return;
+
+        deckList.replaceChildren();
+
+        for (const deck of rows as Deck[]) {
+          const item = document.createElement("li");
+          const link = document.createElement("a");
+          link.href = `/mtg/deck?id=${encodeURIComponent(deck.id)}`;
+          link.textContent = deck.name;
+          item.append(link);
+
+          text(
+            item,
+            "card-meta",
+            deck.visibility === "friends"
+              ? "Shared with friends"
+              : deck.visibility === "public"
+                ? "Public deck"
+                : "Private · visible to you as the owner",
+          );
+
+          deckList.append(item);
+        }
+
+        decksStatus.textContent = rows.length
+          ? `${rows.length} ${rows.length === 1 ? "deck" : "decks"} visible to you.`
+          : "No decks are shared with you yet.";
+      } catch {
+        if (active === version) {
+          decksStatus.textContent =
+            "Couldn’t load shared decks. Refresh to try again.";
+        }
+      }
+    }
+
+    async function loadSales(active: number) {
+      salesStatus.textContent = "Loading sale listings…";
+
+      try {
+        const rows = await readAll(
+          (from, to) =>
+            supabase
+              .from("sell_cards")
+              .select(
+                "id, name, set_name, collector_number, finish, image_url, asking_price_usd, quantity, condition",
+              )
+              .eq("user_id", playerId!)
+              .eq("status", "available")
+              .gt("quantity", 0)
+              .order("name")
+              .order("id")
+              .range(from, to),
+          active,
+        );
+
+        if (!rows || active !== version) return;
+
+        saleList.replaceChildren();
+
+        for (const card of rows as SaleCard[]) {
+          const item = cardItem(card);
+          const price = Number(card.asking_price_usd);
+
+          text(
+            item,
+            "card-price",
+            Number.isFinite(price)
+              ? `${money.format(price)} USD each`
+              : "Price unavailable",
+          );
+
+          text(
+            item,
+            "card-meta",
+            `${card.condition} · ${card.quantity} available`,
+          );
+
+          if (viewerId !== playerId) {
+            const interested = document.createElement("button");
+            interested.type = "button";
+            interested.textContent = "I’m interested";
+            interested.setAttribute(
+              "aria-label",
+              `Contact seller about ${card.name}`,
+            );
+
+            const feedback = document.createElement("p");
+            feedback.className = "card-meta";
+            feedback.setAttribute("role", "status");
+
+            interested.addEventListener("click", async () => {
+              if (active !== version || interested.disabled) return;
+
+              interested.disabled = true;
+              feedback.textContent = "Opening conversation…";
+
+              try {
+                const { data, error } = await supabase.rpc(
+                  "start_sale_conversation",
+                  { p_listing_id: card.id },
+                );
+
+                if (active !== version) return;
+                if (error) throw error;
+                if (typeof data !== "string") {
+                  throw new Error("Conversation unavailable.");
+                }
+
+                window.location.assign(
+                  `/mtg/messages?conversation=${encodeURIComponent(data)}`,
+                );
+              } catch {
+                if (active === version) {
+                  feedback.textContent =
+                    "Couldn’t open a conversation. Refresh and try again.";
+                  interested.disabled = false;
+                }
+              }
+            });
+
+            item.append(interested, feedback);
+          }
+
+          saleList.append(item);
+        }
+
+        salesStatus.textContent = rows.length
+          ? `${rows.length} available ${rows.length === 1 ? "listing" : "listings"}.`
+          : "No cards are currently available for sale.";
+      } catch (error) {
+        if (active === version) {
+          salesStatus.textContent =
+            error instanceof Error
+              ? `Couldn’t load sale listings: ${error.message}`
+              : "Couldn’t load sale listings. Refresh to try again.";
+        }
+      }
+    }
+
+    async function loadPlayer() {
+      const active = ++version;
+      viewerId = null;
+      clearPage();
+
+      if (!playerId || !validId.test(playerId)) {
+        status.textContent =
+          "This player link is missing or invalid. Open a player from Friends or Find a player.";
+        return;
+      }
+
+      status.textContent = "Loading player…";
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (active !== version) return;
+        if (sessionError) throw sessionError;
+
+        if (!session) {
+          status.textContent =
+            "Sign in using the account menu to view this player’s BinderLink profile.";
+          return;
+        }
+
+        viewerId = session.user.id;
+
+        const { data, error } = await supabase.rpc("get_binderlink_player", {
+          p_player_id: playerId,
+        });
+
+        if (active !== version) return;
+        if (error) throw error;
+
+        const player = (data as Player[] | null)?.[0];
+
+        if (!player) {
+          status.textContent = "This player profile could not be found.";
+          return;
+        }
+
+        heading.textContent = player.display_name || player.username;
+        handle.textContent = `@${player.username}`;
+        content.hidden = false;
+        share.disabled = false;
+        status.textContent =
+          "Showing the cards and decks you have permission to view.";
+
+        await Promise.all([
+          loadChase(active),
+          loadDecks(active),
+          loadSales(active),
+        ]);
+      } catch {
+        if (active === version) {
+          clearPage();
+          status.textContent =
+            "Couldn’t load this player. Refresh the page to try again.";
+        }
+      }
+    }
+
+    share.addEventListener("click", async () => {
+      if (!playerId || share.disabled) return;
+
+      const active = version;
+      const url = new URL("/mtg/player", window.location.origin);
+      url.searchParams.set("id", playerId);
+
+      try {
+        await navigator.clipboard.writeText(url.href);
+
+        if (active === version) {
+          status.textContent =
+            "Profile link copied. Sharing permissions still apply.";
+        }
+      } catch {
+        if (active === version) {
+          status.textContent =
+            "Couldn’t copy automatically. Copy this page’s address from your browser.";
+        }
+      }
+    });
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event === "SIGNED_OUT" ||
+        (event === "SIGNED_IN" && session?.user.id !== viewerId)
+      ) {
+        version++;
+        viewerId = null;
+        clearPage();
+        status.textContent = "Checking your sign-in…";
+        window.setTimeout(() => void loadPlayer(), 0);
+      }
+    });
+
+    window.addEventListener("friendships-changed", () => {
+      void loadPlayer();
+    });
+
+    void loadPlayer();
+  }
+</script>
+
+<style>
+  .player-page {
+    color: var(--color-brand-text);
+  }
+
+  .player-link {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+  }
+
+  .player-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+
+  .player-name {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .player-handle,
+  .player-status,
+  .section-status {
+    margin-top: 0.75rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  .player-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  .player-sections a,
+  .player-share,
+  .player-cards :global(button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-pyroduck-plasma);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .player-section {
+    margin-top: 2rem;
+    padding: 1.25rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    scroll-margin-top: 9rem;
+  }
+
+  .player-section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .player-cards,
+  .player-decks {
+    display: grid;
+    gap: 1rem;
+    margin: 1.25rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .player-cards {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  }
+
+  .player-cards :global(li),
+  .player-decks :global(li) {
+    min-width: 0;
+    padding: 0.85rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+    overflow-wrap: anywhere;
+  }
+
+  .player-cards :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+
+  .player-cards :global(.card-name) {
+    margin-top: 0.75rem;
+    font-weight: 700;
+  }
+
+  .player-cards :global(.card-meta),
+  .player-decks :global(.card-meta) {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .player-cards :global(.card-price),
+  .player-decks :global(a) {
+    margin-top: 0.75rem;
+    color: var(--color-pyroduck-lime);
+    font-weight: 700;
+  }
+
+  .player-cards :global(button) {
+    margin-top: 0.75rem;
+    width: 100%;
+  }
+
+  .player-link:hover,
+  .player-sections a:hover,
+  .player-share:hover:not(:disabled),
+  .player-cards :global(button:hover:not(:disabled)) {
+    color: var(--color-pyroduck-lime);
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  .player-cards :global(button:focus-visible),
+  .player-decks :global(a:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  button:disabled,
+  .player-cards :global(button:disabled) {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+</style>
