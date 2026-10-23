@@ -798,26 +798,39 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
         return;
       }
 
-      setStatus("Loading your chase list…");
+      const loadedCards: ChaseCard[] = [];
+      const pageSize = 100;
+      let offset = 0;
 
-      const { data, error } = await supabase
-        .from("chase_cards")
-        .select(
-          "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at",
-        )
-        .eq("user_id", session.user.id)
-        .order("name", { ascending: true });
+      while (true) {
+        const { data, error } = await supabase
+          .from("chase_cards")
+          .select(
+            "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at",
+          )
+          .eq("user_id", session.user.id)
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
 
-      if (activeRequest !== requestId) return;
+        if (activeRequest !== requestId) return;
 
-      if (error) {
-        cards = [];
-        list.replaceChildren();
-        setStatus(`Couldn’t load your chase list: ${error.message}`);
-        return;
+        if (error) {
+          cards = [];
+          list.replaceChildren();
+          setStatus(`Couldn’t load your chase list: ${error.message}`);
+          return;
+        }
+
+        const page = (data ?? []) as ChaseCard[];
+        loadedCards.push(...page);
+
+        if (page.length === 0) break;
+
+        offset += page.length;
       }
 
-      cards = (data ?? []) as ChaseCard[];
+      cards = loadedCards;
       renderCards();
       window.dispatchEvent(new Event("chase-list-loaded"));
       loaded = true;
