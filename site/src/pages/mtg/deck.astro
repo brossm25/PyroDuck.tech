@@ -123,7 +123,23 @@ import Layout from "@/layouts/Layout.astro";
         </section>
       </div>
 
-      <div id="deck-groups"></div>
+      <div class="deck-view-controls" role="group" aria-label="Card display">
+        <span>Card view</span>
+        <button
+          type="button"
+          data-card-view="compact"
+          aria-controls="deck-groups"
+          aria-pressed="true">Compact list</button
+        >
+        <button
+          type="button"
+          data-card-view="grid"
+          aria-controls="deck-groups"
+          aria-pressed="false">Grid</button
+        >
+      </div>
+
+      <div id="deck-groups" data-view="compact"></div>
 
       <p class="muted">
         Draft deck: the count includes commanders. This version does not
@@ -132,6 +148,43 @@ import Layout from "@/layouts/Layout.astro";
       </p>
     </div>
   </section>
+
+  <dialog id="missing-prices" aria-labelledby="missing-prices-heading">
+    <form method="dialog" class="missing-prices-close">
+      <button autofocus>Close ×</button>
+    </form>
+
+    <h2 id="missing-prices-heading">Missing prices</h2>
+
+    <p class="missing-prices-help">
+      Estimates are in USD per copy. Your estimate stays unchanged until you
+      edit it. If a later refresh finds a Scryfall price, that price takes
+      priority.
+    </p>
+
+    <p id="missing-prices-status" role="status"></p>
+    <ul id="missing-prices-list"></ul>
+  </dialog>
+
+  <dialog id="card-preview" aria-labelledby="card-preview-heading">
+    <form method="dialog" class="preview-close">
+      <button autofocus>Close ×</button>
+    </form>
+
+    <h2 id="card-preview-heading"></h2>
+
+    <div id="card-preview-art" class="card-art">
+      <img id="card-preview-image" alt="" width="488" height="680" />
+    </div>
+
+    <div
+      id="card-preview-faces"
+      class="preview-faces"
+      role="group"
+      aria-label="Card faces"
+    >
+    </div>
+  </dialog>
 
   <dialog id="deck-picker" aria-labelledby="picker-heading">
     <form method="dialog"><button autofocus>Close ×</button></form>
@@ -182,6 +235,11 @@ import Layout from "@/layouts/Layout.astro";
     description: string;
     visibility: string;
   }
+  interface SavedFace {
+    name: string;
+    image_url: string | null;
+    oracle_text: string;
+  }
   interface Entry {
     id: string;
     scryfall_id: string;
@@ -193,6 +251,8 @@ import Layout from "@/layouts/Layout.astro";
     quantity: number;
     card_role: string;
     image_url: string | null;
+    oracle_text: string | null;
+    card_faces: SavedFace[] | null;
     type_line: string | null;
     mana_cost: string | null;
     mana_value: number | null;
@@ -207,6 +267,7 @@ import Layout from "@/layouts/Layout.astro";
   interface Card {
     id: string;
     oracle_id?: string;
+    oracle_text?: string;
     name: string;
     set_name: string;
     collector_number: string;
@@ -225,6 +286,8 @@ import Layout from "@/layouts/Layout.astro";
     };
     image_uris?: { normal: string };
     card_faces?: {
+      name?: string;
+      oracle_text?: string;
       type_line?: string;
       mana_cost?: string;
       colors?: string[];
@@ -257,6 +320,46 @@ import Layout from "@/layouts/Layout.astro";
   let version = 0;
   let printings: Card[] = [];
   let savedEntries: Entry[] = [];
+
+  const cardViewButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-card-view]"),
+  );
+
+  function setCardView(view: "grid" | "compact") {
+    get("deck-groups").dataset.view = view;
+
+    for (const button of cardViewButtons) {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.cardView === view),
+      );
+    }
+  }
+
+  let initialCardView: "grid" | "compact" = "compact";
+
+  try {
+    if (localStorage.getItem("binderlink-card-view") === "grid") {
+      initialCardView = "grid";
+    }
+  } catch {
+    // Default to Compact when browser storage is unavailable.
+  }
+
+  setCardView(initialCardView);
+
+  for (const button of cardViewButtons) {
+    button.addEventListener("click", () => {
+      const view = button.dataset.cardView === "compact" ? "compact" : "grid";
+      setCardView(view);
+
+      try {
+        localStorage.setItem("binderlink-card-view", view);
+      } catch {
+        // Keep the selected view for this visit.
+      }
+    });
+  }
 
   const sectionNames = [
     "Planeswalkers",
@@ -309,6 +412,20 @@ import Layout from "@/layouts/Layout.astro";
         : Number(rawPrice);
 
     return {
+      oracle_text:
+        card.oracle_text ??
+        (card.card_faces?.length
+          ? card.card_faces
+              .map((face) =>
+                [face.name, face.oracle_text].filter(Boolean).join("\n"),
+              )
+              .join("\n\n")
+          : null),
+      card_faces: (card.card_faces ?? []).map((face) => ({
+        name: face.name ?? card.name,
+        image_url: face.image_uris?.normal ?? null,
+        oracle_text: face.oracle_text ?? "",
+      })),
       type_line: card.type_line ?? card.card_faces?.[0]?.type_line ?? null,
       mana_cost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? null,
       mana_value:
@@ -342,6 +459,280 @@ import Layout from "@/layouts/Layout.astro";
       amount: scryfall ?? manual,
       manual: scryfall === null && manual !== null,
     };
+  }
+
+  function renderManaCost(parent: HTMLElement, cost: string | null) {
+    parent.replaceChildren();
+
+    if (!cost) {
+      parent.textContent = "—";
+      parent.setAttribute("aria-label", "No mana cost listed");
+      return;
+    }
+
+    const parts = cost.split(/(\{[^}]+\})/g).filter(Boolean);
+
+    for (const part of parts) {
+      if (!/^\{[^}]+\}$/.test(part)) {
+        parent.append(document.createTextNode(part));
+        continue;
+      }
+
+      const symbol = part.slice(1, -1);
+      const filename = symbol
+        .replaceAll("/", "")
+        .replace("∞", "INFINITY")
+        .replace("½", "HALF");
+
+      if (!/^[A-Z0-9]+$/.test(filename)) {
+        parent.append(document.createTextNode(part));
+        continue;
+      }
+
+      const icon = document.createElement("img");
+      icon.className = "mana-symbol";
+      icon.src = `https://svgs.scryfall.io/card-symbols/${filename}.svg`;
+      icon.alt = part;
+      icon.title = part;
+      icon.width = 20;
+      icon.height = 20;
+
+      icon.addEventListener(
+        "error",
+        () => icon.replaceWith(document.createTextNode(part)),
+        { once: true },
+      );
+
+      parent.append(icon);
+    }
+  }
+
+  const cardPreview = get<HTMLDialogElement>("card-preview");
+  const previewImage = get<HTMLImageElement>("card-preview-image");
+  const previewArt = get<HTMLDivElement>("card-preview-art");
+  const previewFaces = get<HTMLDivElement>("card-preview-faces");
+  let previewTrigger: HTMLButtonElement | null = null;
+
+  function safeCardImage(value: string | null): string | null {
+    if (!value) return null;
+
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && url.hostname === "cards.scryfall.io"
+        ? url.href
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function openCardPreview(entry: Entry, trigger: HTMLButtonElement) {
+    const faces: { name: string; image_url: string }[] = [];
+
+    for (const face of entry.card_faces ?? []) {
+      const url = safeCardImage(face.image_url);
+      if (url) faces.push({ name: face.name, image_url: url });
+    }
+
+    if (!faces.length) {
+      const url = safeCardImage(entry.image_url);
+      if (url) faces.push({ name: entry.name, image_url: url });
+    }
+
+    if (!faces.length) return;
+
+    previewTrigger = trigger;
+    previewArt.dataset.finish = entry.finish;
+    previewFaces.replaceChildren();
+
+    function showFace(index: number) {
+      const face = faces[index];
+      previewImage.src = face.image_url;
+      previewImage.alt = face.name;
+      get("card-preview-heading").textContent = face.name;
+
+      Array.from(previewFaces.children).forEach((button, position) => {
+        button.setAttribute("aria-pressed", String(position === index));
+      });
+    }
+
+    if (faces.length > 1) {
+      faces.forEach((face, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent =
+          index === 0 ? "Front" : index === 1 ? "Back" : `Face ${index + 1}`;
+        button.title = face.name;
+        button.addEventListener("click", () => showFace(index));
+        previewFaces.append(button);
+      });
+    }
+
+    showFace(0);
+    cardPreview.showModal();
+  }
+
+  cardPreview.addEventListener("click", (event) => {
+    if (event.target !== cardPreview) return;
+
+    const bounds = cardPreview.getBoundingClientRect();
+    if (
+      event.clientX < bounds.left ||
+      event.clientX > bounds.right ||
+      event.clientY < bounds.top ||
+      event.clientY > bounds.bottom
+    ) {
+      cardPreview.close();
+    }
+  });
+
+  cardPreview.addEventListener("close", () => {
+    previewImage.removeAttribute("src");
+    if (previewTrigger?.isConnected) previewTrigger.focus();
+    previewTrigger = null;
+  });
+
+  const missingPrices = get<HTMLDialogElement>("missing-prices");
+  let missingPriceIds = new Set<string>();
+
+  function openMissingPrices(label: string, cards: Entry[]) {
+    missingPriceIds = new Set(cards.map((entry) => entry.id));
+    get("missing-prices-heading").textContent = `Missing prices · ${label}`;
+    get("missing-prices-status").textContent = "";
+
+    renderMissingPrices();
+    missingPrices.showModal();
+  }
+
+  function renderMissingPrices() {
+    const list = get<HTMLUListElement>("missing-prices-list");
+    list.replaceChildren();
+
+    const entries = savedEntries.filter(
+      (entry) =>
+        missingPriceIds.has(entry.id) && effectivePrice(entry).amount === null,
+    );
+
+    if (!entries.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "All cards in this section now have a price.";
+      list.append(empty);
+      return;
+    }
+
+    for (const entry of entries) {
+      const item = document.createElement("li");
+      item.className = "missing-price-card";
+
+      const url = safeCardImage(entry.image_url);
+
+      if (url) {
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = entry.name;
+        image.width = 488;
+        image.height = 680;
+        image.loading = "lazy";
+        item.append(image);
+      }
+
+      const information = document.createElement("div");
+      information.className = "missing-price-information";
+
+      const name = document.createElement("h3");
+      name.textContent = entry.name;
+
+      const printing = document.createElement("p");
+      printing.textContent = `${entry.set_name} #${entry.collector_number} · ${entry.finish}`;
+
+      const detail = document.createElement("p");
+      detail.textContent =
+        `${entry.quantity} ${entry.quantity === 1 ? "copy" : "copies"} · ` +
+        (entry.is_proxy ? "Proxy" : "Owned");
+
+      information.append(name, printing, detail);
+
+      if (owner) {
+        const form = document.createElement("form");
+        form.className = "missing-price-form";
+
+        const label = document.createElement("label");
+        label.textContent = "Estimate per copy (USD)";
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.max = "99999999.99";
+        input.step = "0.01";
+        input.inputMode = "decimal";
+        input.placeholder = "0.00";
+        input.required = true;
+
+        label.append(input);
+
+        const button = document.createElement("button");
+        button.type = "submit";
+        button.textContent = "Save estimate";
+
+        form.append(label, button);
+
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (!owner || busy || !form.reportValidity()) return;
+
+          const raw = input.value.trim();
+          const amount = Number(raw);
+
+          if (
+            !raw ||
+            !Number.isFinite(amount) ||
+            amount < 0 ||
+            amount > 99999999.99
+          ) {
+            get("missing-prices-status").textContent =
+              "Enter a valid estimate.";
+            input.focus();
+            return;
+          }
+
+          const expectedVersion = version;
+          get("missing-prices-status").textContent =
+            `Saving estimate for ${entry.name}…`;
+
+          void mutate(async () => {
+            const { data, error } = await supabase
+              .from("deck_cards")
+              .update({
+                manual_price_usd: amount,
+                manual_price_updated_at: new Date().toISOString(),
+              })
+              .eq("id", entry.id)
+              .eq("deck_id", deckId!)
+              .select("id");
+
+            if (error) throw error;
+            if (!data?.length) throw new Error("Estimate was not saved.");
+            if (expectedVersion !== version) return;
+
+            await loadEntries();
+            if (expectedVersion !== version) return;
+
+            if (missingPrices.open) renderMissingPrices();
+
+            get("missing-prices-status").textContent =
+              `Saved ${money(amount)} per copy for ${entry.name}.`;
+            message(`Estimate saved for ${entry.name}.`);
+          });
+        });
+
+        information.append(form);
+      }
+
+      item.append(information);
+      list.append(item);
+    }
+
+    controls();
   }
 
   function quantityOf(entries: Entry[]) {
@@ -440,7 +831,15 @@ import Layout from "@/layouts/Layout.astro";
       );
 
       if (missing) {
-        addNote(value, `${missing} cards have no price available.`);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "missing-price-link";
+        button.textContent =
+          `${missing} ${missing === 1 ? "card has" : "cards have"} ` +
+          "no price available. View cards →";
+        button.setAttribute("aria-haspopup", "dialog");
+        button.addEventListener("click", () => openMissingPrices(label, cards));
+        value.append(button);
       }
 
       if (estimated) {
@@ -598,6 +997,13 @@ import Layout from "@/layouts/Layout.astro";
       .forEach((element) => {
         element.disabled = busy || !owner;
       });
+    document
+      .querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+        "#missing-prices-list input, #missing-prices-list button",
+      )
+      .forEach((element) => {
+        element.disabled = busy || !owner;
+      });
     save.disabled = busy || !owner || !printings.length;
   }
 
@@ -627,6 +1033,9 @@ import Layout from "@/layouts/Layout.astro";
       if (current === version) {
         message(errorText(error));
         if (picker.open) get("picker-status").textContent = errorText(error);
+        if (missingPrices.open) {
+          get("missing-prices-status").textContent = errorText(error);
+        }
       }
     } finally {
       busy = false;
@@ -696,15 +1105,38 @@ import Layout from "@/layouts/Layout.astro";
         img.height = 680;
 
         art.append(img);
-        item.append(art);
+
+        const previewButton = document.createElement("button");
+        previewButton.type = "button";
+        previewButton.className = "card-preview-trigger";
+        previewButton.setAttribute("aria-label", `Enlarge ${entry.name}`);
+        previewButton.setAttribute("aria-haspopup", "dialog");
+        previewButton.addEventListener("click", () =>
+          openCardPreview(entry, previewButton),
+        );
+
+        previewButton.append(art);
+        item.append(previewButton);
       }
+      const information = document.createElement("div");
+      information.className = "entry-information";
+
       const heading = document.createElement("h3");
       heading.textContent = `${entry.quantity} × ${entry.name}`;
+
       const meta = document.createElement("p");
+      meta.className = "entry-meta";
       meta.textContent = `${entry.set_name} #${entry.collector_number} · ${entry.finish}`;
-      item.append(heading, meta);
+
+      const manaCost = document.createElement("p");
+      manaCost.className = "entry-mana";
+      renderManaCost(manaCost, entry.mana_cost);
+
+      information.append(heading, meta, manaCost);
+      item.append(information);
       const price = effectivePrice(entry);
       const priceLabel = document.createElement("p");
+      priceLabel.className = "entry-price";
 
       priceLabel.textContent =
         price.amount === null
@@ -713,11 +1145,49 @@ import Layout from "@/layouts/Layout.astro";
               price.manual ? "Manual estimate" : "Scryfall"
             }`;
 
-      item.append(priceLabel);
+      information.append(priceLabel);
+
+      const rules = document.createElement("div");
+      rules.className = "entry-rules";
+
+      const rulesText = document.createElement("p");
+      rulesText.id = `rules-${entry.id}`;
+      rulesText.className = "entry-rules-text";
+
+      if (entry.oracle_text === null || entry.oracle_text === undefined) {
+        rulesText.textContent = "Refresh card data to load abilities.";
+      } else if (!entry.oracle_text.trim()) {
+        rulesText.textContent = "No rules text.";
+      } else {
+        renderManaCost(rulesText, entry.oracle_text);
+      }
+
+      rules.append(rulesText);
+
+      if ((entry.oracle_text?.length ?? 0) > 180) {
+        rules.classList.add("is-collapsed");
+
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "rules-toggle";
+        more.textContent = "Show more";
+        more.setAttribute("aria-expanded", "false");
+        more.setAttribute("aria-controls", rulesText.id);
+
+        more.addEventListener("click", () => {
+          const collapsed = rules.classList.toggle("is-collapsed");
+          more.textContent = collapsed ? "Show more" : "Show less";
+          more.setAttribute("aria-expanded", String(!collapsed));
+        });
+
+        rules.append(more);
+      }
+
+      information.append(rules);
 
       if (price.manual && entry.manual_price_updated_at) {
         addNote(
-          item,
+          information,
           `Estimate entered: ${new Date(
             entry.manual_price_updated_at,
           ).toLocaleDateString()}`,
@@ -727,7 +1197,7 @@ import Layout from "@/layouts/Layout.astro";
         const badge = document.createElement("span");
         badge.className = "proxy-badge";
         badge.textContent = "Proxy";
-        item.append(badge);
+        information.append(badge);
       }
       if (owner) {
         const actions = document.createElement("div");
@@ -975,7 +1445,7 @@ import Layout from "@/layouts/Layout.astro";
       const { data, error } = await supabase
         .from("deck_cards")
         .select(
-          "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at",
+          "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at, oracle_text, card_faces",
         )
         .eq("deck_id", deckId!)
         .order("name", { ascending: true })
@@ -997,6 +1467,8 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   async function load() {
+    if (missingPrices.open) missingPrices.close();
+    missingPriceIds.clear();
     const current = ++version;
     owner = false;
     deck = null;
@@ -1831,5 +2303,474 @@ import Layout from "@/layouts/Layout.astro";
     margin: 0;
     font-size: 0.875rem;
     color: var(--color-pyroduck-plasma);
+  }
+
+  .deck-view-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .deck-view-controls > span {
+    margin-right: 0.5rem;
+    color: var(--color-brand-muted);
+    font-weight: 600;
+  }
+
+  .deck-editor .deck-view-controls button {
+    border: 1px solid var(--color-pyroduck-plasma);
+    background: transparent;
+    color: var(--color-brand-text);
+  }
+
+  .deck-editor .deck-view-controls button[aria-pressed="true"] {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .deck-editor :global(.entry-information) {
+    min-width: 0;
+  }
+
+  .deck-editor :global(.entry-mana) {
+    margin-top: 0.35rem;
+    overflow-wrap: anywhere;
+  }
+
+  #deck-groups[data-view="compact"] :global(.card-grid) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.card-grid .entry) {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: start;
+    gap: 0.5rem 0.85rem;
+    height: auto;
+    padding-block: 1rem;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 22%, transparent);
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry:last-child) {
+    border-bottom: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry > .card-art) {
+    grid-column: 1;
+    grid-row: 1;
+    width: 54px;
+    border-radius: 0.35rem;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-information) {
+    grid-column: 2;
+    grid-row: 1;
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-information h3) {
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-information p) {
+    margin: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-price) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  #deck-groups[data-view="compact"] :global(.proxy-badge) {
+    justify-self: start;
+    margin: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-editor) {
+    grid-column: 2;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-editor > summary) {
+    width: fit-content;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-editor .entry-actions) {
+    padding: 0.75rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 0.5rem;
+  }
+
+  @media (min-width: 640px) {
+    #deck-groups[data-view="compact"] :global(.entry-information) {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 10rem);
+      column-gap: 1rem;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-information h3) {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-mana) {
+      grid-column: 2;
+      grid-row: 1;
+      text-align: right;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-meta) {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-price) {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: right;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-information > .muted),
+    #deck-groups[data-view="compact"] :global(.proxy-badge) {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .deck-editor :global(.entry-mana) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .deck-editor :global(.card-grid .entry-mana img.mana-symbol) {
+    display: inline-block;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 0;
+    object-fit: contain;
+  }
+
+  @media (min-width: 640px) {
+    #deck-groups[data-view="compact"] :global(.entry-mana) {
+      justify-content: flex-end;
+    }
+  }
+
+  /* Clickable card images in either view. */
+  .deck-editor :global(button.card-preview-trigger) {
+    display: block;
+    flex: none;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0.75rem;
+    background: transparent;
+    cursor: zoom-in;
+  }
+
+  .deck-editor :global(button.card-preview-trigger:hover:not(:disabled)) {
+    background: transparent;
+  }
+
+  #deck-groups[data-view="compact"] :global(.card-preview-trigger) {
+    grid-column: 1;
+    grid-row: 1;
+    width: 54px;
+  }
+
+  /* Rules are shown only in Compact view. */
+  .deck-editor :global(.entry-rules) {
+    display: none;
+    min-width: 0;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-rules) {
+    display: block;
+    grid-column: 1 / -1;
+    margin-top: 0.5rem;
+  }
+
+  #deck-groups[data-view="compact"] :global(.entry-rules-text) {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+  }
+
+  #deck-groups[data-view="compact"]
+    :global(.entry-rules.is-collapsed .entry-rules-text) {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+
+  .deck-editor :global(.card-grid .entry-rules img.mana-symbol) {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border-radius: 0;
+    vertical-align: -0.12em;
+  }
+
+  .deck-editor :global(button.rules-toggle) {
+    min-height: 44px;
+    margin: 0;
+    padding: 0.25rem 0;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    font-size: 0.8rem;
+  }
+
+  .deck-editor :global(button.rules-toggle:hover:not(:disabled)) {
+    background: transparent;
+    color: var(--color-pyroduck-lime);
+  }
+
+  @media (min-width: 900px) {
+    #deck-groups[data-view="compact"] :global(.entry-information) {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 10rem);
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-rules) {
+      grid-column: 2;
+      grid-row: 1 / span 4;
+      margin-top: 0;
+    }
+
+    #deck-groups[data-view="compact"] :global(.entry-mana),
+    #deck-groups[data-view="compact"] :global(.entry-price) {
+      grid-column: 3;
+    }
+
+    #deck-groups[data-view="compact"] :global(.proxy-badge),
+    #deck-groups[data-view="compact"] :global(.entry-information > .muted) {
+      grid-column: 1;
+    }
+  }
+
+  /* Enlarged image dialog. */
+  #card-preview {
+    width: min(560px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  #card-preview::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .preview-close,
+  .preview-faces {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .preview-close {
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+  }
+
+  #card-preview-heading {
+    margin-bottom: 0.75rem;
+    font-size: 1.2rem;
+  }
+
+  #card-preview-art {
+    width: min(100%, 420px);
+    margin-inline: auto;
+  }
+
+  #card-preview-image {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .preview-faces {
+    margin-top: 0.75rem;
+  }
+
+  #card-preview button {
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-brand-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  #card-preview button[aria-pressed="true"],
+  #card-preview button:hover {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  #card-preview :focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .deck-editor :global(button.missing-price-link) {
+    display: block;
+    min-height: 44px;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0;
+    background: transparent;
+    color: var(--color-pyroduck-plasma);
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    font-size: 0.875rem;
+  }
+
+  .deck-editor :global(button.missing-price-link:hover:not(:disabled)) {
+    background: transparent;
+    color: var(--color-pyroduck-lime);
+  }
+
+  #missing-prices {
+    width: min(720px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  #missing-prices::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .missing-prices-close {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+  }
+
+  .missing-prices-help,
+  #missing-prices-status,
+  #missing-prices :global(.missing-price-information p) {
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  #missing-prices-status {
+    margin-block: 0.75rem;
+  }
+
+  #missing-prices-list {
+    display: grid;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  #missing-prices :global(.missing-price-card) {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 1rem;
+    padding-block: 1rem;
+    border-top: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 25%, transparent);
+  }
+
+  #missing-prices :global(.missing-price-card > img) {
+    grid-column: 1;
+    grid-row: 1;
+    width: 64px;
+    height: auto;
+    border-radius: 0.4rem;
+  }
+
+  #missing-prices :global(.missing-price-information) {
+    grid-column: 2;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #missing-prices :global(h3) {
+    margin: 0 0 0.25rem;
+    font-weight: 700;
+  }
+
+  #missing-prices :global(.missing-price-form) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  #missing-prices :global(.missing-price-form label) {
+    display: grid;
+    flex: 1 1 12rem;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.875rem;
+  }
+
+  #missing-prices :global(input) {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  #missing-prices :global(button) {
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #missing-prices :global(button:hover:not(:disabled)) {
+    background: var(--color-pyroduck-lime);
+  }
+
+  #missing-prices :global(:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #missing-prices :global(:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
   }
 </style>
