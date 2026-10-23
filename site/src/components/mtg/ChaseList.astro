@@ -846,8 +846,44 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     void refreshPrices(true);
   });
 
-  supabase.auth.onAuthStateChange(() => {
-    window.setTimeout(() => {
+  let observedUserId: string | null | undefined;
+  let authLoadTimer: number | undefined;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event !== "INITIAL_SESSION" &&
+      event !== "SIGNED_IN" &&
+      event !== "SIGNED_OUT"
+    ) {
+      return;
+    }
+
+    const nextUserId = session?.user.id ?? null;
+
+    // Repeated sign-in events for the same user need no reload.
+    if (nextUserId === observedUserId) return;
+    observedUserId = nextUserId;
+
+    // Immediately invalidate requests and clear the previous user's cards.
+    requestId++;
+    refreshController?.abort();
+    signedIn = false;
+    loading = true;
+    cards = [];
+    list?.replaceChildren();
+    clearTotal();
+    setPriceStatus("");
+    if (letterNav) letterNav.hidden = true;
+    if (preview?.open) preview.close();
+    setStatus(
+      nextUserId
+        ? "Loading your chase list…"
+        : "Sign in above to see your saved chase cards.",
+    );
+    syncButtons();
+
+    window.clearTimeout(authLoadTimer);
+    authLoadTimer = window.setTimeout(() => {
       void loadChaseList();
     }, 0);
   });
@@ -855,8 +891,6 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
   window.addEventListener("chase-cards-changed", () => {
     void loadChaseList();
   });
-
-  void loadChaseList();
 </script>
 
 <style>

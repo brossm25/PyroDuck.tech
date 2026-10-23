@@ -5,7 +5,7 @@
     <div class="account-panel">
       <p class="account-panel-heading">BinderLink account</p>
 
-      <form class="account-form">
+      <form class="account-form" method="dialog">
         <label>
           Email address
           <input
@@ -558,7 +558,18 @@
       });
     });
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    // The explicit initial load below handles startup.
+    // Token refreshes do not require reloading profile details.
+    if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+      return;
+    }
+
+    // Supabase can repeat SIGNED_IN when returning to a tab.
+    if (event === "SIGNED_IN" && session?.user.id === displayedUserId) {
+      return;
+    }
+
     if (!session) {
       requestId++;
       showSession(false);
