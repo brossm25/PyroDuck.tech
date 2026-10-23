@@ -54,14 +54,77 @@ import Layout from "@/layouts/Layout.astro";
         </p>
       </div>
 
-      <section class="panel" aria-labelledby="commander-heading">
-        <h2 id="commander-heading">Commanders</h2>
-        <ul id="deck-commanders" class="card-grid"></ul>
-      </section>
-      <section class="panel" aria-labelledby="main-heading">
-        <h2 id="main-heading">Main deck</h2>
-        <ul id="deck-main" class="card-grid"></ul>
-      </section>
+      <div class="deck-summary">
+        <section class="panel" aria-labelledby="commander-heading">
+          <h2 id="commander-heading">Commanders</h2>
+          <ul id="deck-commanders" class="card-grid"></ul>
+        </section>
+
+        <section class="panel overview-panel" aria-label="Deck overview">
+          <div
+            class="overview-tabs"
+            role="tablist"
+            aria-label="Deck information"
+          >
+            <button
+              id="tab-overview"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="panel-overview"
+              tabindex="0">Overview</button
+            >
+            <button
+              id="tab-value"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-value"
+              tabindex="-1">Value</button
+            >
+            <button
+              id="tab-mana"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-mana"
+              tabindex="-1">Mana</button
+            >
+          </div>
+
+          <div
+            id="panel-overview"
+            role="tabpanel"
+            aria-labelledby="tab-overview"
+            tabindex="0"
+          >
+          </div>
+          <div
+            id="panel-value"
+            role="tabpanel"
+            aria-labelledby="tab-value"
+            tabindex="0"
+            hidden
+          >
+          </div>
+          <div
+            id="panel-mana"
+            role="tabpanel"
+            aria-labelledby="tab-mana"
+            tabindex="0"
+            hidden
+          >
+          </div>
+
+          <button id="refresh-deck-data" type="button" hidden>
+            Refresh card data
+          </button>
+          <p id="deck-data-status" class="muted" role="status"></p>
+        </section>
+      </div>
+
+      <div id="deck-groups"></div>
+
       <p class="muted">
         Draft deck: the count includes commanders. This version does not
         validate Commander legality, color identity, singleton rules, or
@@ -80,13 +143,15 @@ import Layout from "@/layouts/Layout.astro";
         <img id="picker-image" alt="" width="488" height="680" hidden />
       </div>
       <label>Finish<select id="picker-finish" required></select></label>
-      <label
-        >Use as<select id="picker-role"
-          ><option value="main">Main deck</option><option value="commander"
-            >Commander</option
-          ></select
-        ></label
-      >
+      <label>
+        Add to
+        <select id="picker-role">
+          <option value="main">Main deck</option>
+          <option value="commander">Commander</option>
+          <option value="sideboard">Sideboard</option>
+          <option value="maybeboard">Maybeboard</option>
+        </select>
+      </label>
       <label
         >Quantity<input
           id="picker-quantity"
@@ -119,6 +184,7 @@ import Layout from "@/layouts/Layout.astro";
   }
   interface Entry {
     id: string;
+    scryfall_id: string;
     name: string;
     set_name: string;
     collector_number: string;
@@ -127,7 +193,17 @@ import Layout from "@/layouts/Layout.astro";
     quantity: number;
     card_role: string;
     image_url: string | null;
+    type_line: string | null;
+    mana_cost: string | null;
+    mana_value: number | null;
+    colors: string[] | null;
+    color_identity: string[] | null;
+    price_usd: number | string | null;
+    price_checked_at: string | null;
+    manual_price_usd: number | string | null;
+    manual_price_updated_at: string | null;
   }
+
   interface Card {
     id: string;
     oracle_id?: string;
@@ -137,9 +213,25 @@ import Layout from "@/layouts/Layout.astro";
     scryfall_uri: string;
     prints_search_uri: string;
     finishes: string[];
+    type_line?: string;
+    mana_cost?: string;
+    cmc?: number;
+    colors?: string[];
+    color_identity?: string[];
+    prices?: {
+      usd?: string | null;
+      usd_foil?: string | null;
+      usd_etched?: string | null;
+    };
     image_uris?: { normal: string };
-    card_faces?: { image_uris?: { normal: string } }[];
+    card_faces?: {
+      type_line?: string;
+      mana_cost?: string;
+      colors?: string[];
+      image_uris?: { normal: string };
+    }[];
   }
+
   interface Page {
     data: Card[];
     has_more: boolean;
@@ -164,6 +256,323 @@ import Layout from "@/layouts/Layout.astro";
   let busy = false;
   let version = 0;
   let printings: Card[] = [];
+  let savedEntries: Entry[] = [];
+
+  const sectionNames = [
+    "Planeswalkers",
+    "Creatures",
+    "Artifacts",
+    "Instants",
+    "Sorceries",
+    "Enchantments",
+    "Lands",
+    "Other",
+    "Sideboard",
+    "Maybeboard",
+  ];
+
+  const roleNames: Record<string, string> = {
+    main: "Main deck",
+    commander: "Commander",
+    sideboard: "Sideboard",
+    maybeboard: "Maybeboard",
+  };
+
+  function sectionFor(entry: Entry): string {
+    if (entry.card_role === "commander") return "Commanders";
+    if (entry.card_role === "sideboard") return "Sideboard";
+    if (entry.card_role === "maybeboard") return "Maybeboard";
+
+    const type = (entry.type_line ?? "").split(" // ")[0].split("—")[0];
+
+    if (/\bLand\b/.test(type)) return "Lands";
+    if (/\bCreature\b/.test(type)) return "Creatures";
+    if (/\bPlaneswalker\b/.test(type)) return "Planeswalkers";
+    if (/\bArtifact\b/.test(type)) return "Artifacts";
+    if (/\bInstant\b/.test(type)) return "Instants";
+    if (/\bSorcery\b/.test(type)) return "Sorceries";
+    if (/\bEnchantment\b/.test(type)) return "Enchantments";
+    return "Other";
+  }
+
+  function cardData(card: Card, selectedFinish: string) {
+    const rawPrice =
+      selectedFinish === "etched"
+        ? card.prices?.usd_etched
+        : selectedFinish === "foil"
+          ? card.prices?.usd_foil
+          : card.prices?.usd;
+
+    const price =
+      rawPrice === null || rawPrice === undefined || rawPrice === ""
+        ? NaN
+        : Number(rawPrice);
+
+    return {
+      type_line: card.type_line ?? card.card_faces?.[0]?.type_line ?? null,
+      mana_cost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? null,
+      mana_value:
+        typeof card.cmc === "number" && Number.isFinite(card.cmc)
+          ? card.cmc
+          : null,
+      colors: card.colors ?? card.card_faces?.[0]?.colors ?? [],
+      color_identity: card.color_identity ?? [],
+      price_usd: Number.isFinite(price) && price >= 0 ? price : null,
+      price_checked_at: new Date().toISOString(),
+    };
+  }
+
+  const money = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(value);
+
+  function effectivePrice(entry: Entry) {
+    function parse(value: number | string | null | undefined) {
+      if (value === null || value === undefined || value === "") return null;
+      const amount = Number(value);
+      return Number.isFinite(amount) && amount >= 0 ? amount : null;
+    }
+
+    const scryfall = parse(entry.price_usd);
+    const manual = parse(entry.manual_price_usd);
+
+    return {
+      amount: scryfall ?? manual,
+      manual: scryfall === null && manual !== null,
+    };
+  }
+
+  function quantityOf(entries: Entry[]) {
+    return entries.reduce((total, entry) => total + entry.quantity, 0);
+  }
+
+  function addStat(parent: HTMLElement, label: string, value: string) {
+    const row = document.createElement("div");
+    row.className = "stat-row";
+
+    const name = document.createElement("span");
+    name.textContent = label;
+
+    const amount = document.createElement("strong");
+    amount.textContent = value;
+
+    row.append(name, amount);
+    parent.append(row);
+  }
+
+  function addNote(parent: HTMLElement, text: string) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = text;
+    parent.append(note);
+  }
+
+  function renderOverview(entries: Entry[]) {
+    const active = entries.filter(
+      (entry) => entry.card_role === "main" || entry.card_role === "commander",
+    );
+    const owned = active.filter((entry) => !entry.is_proxy);
+    const proxies = active.filter((entry) => entry.is_proxy);
+
+    const overview = get("panel-overview");
+    const value = get("panel-value");
+    const mana = get("panel-mana");
+    overview.replaceChildren();
+    value.replaceChildren();
+    mana.replaceChildren();
+
+    addStat(
+      overview,
+      "Deck cards, including commanders",
+      String(quantityOf(active)),
+    );
+    addStat(overview, "Owned cards", String(quantityOf(owned)));
+    addStat(overview, "Proxies", String(quantityOf(proxies)));
+
+    for (const section of ["Commanders", ...sectionNames]) {
+      const count = quantityOf(
+        entries.filter((entry) => sectionFor(entry) === section),
+      );
+      if (count || !["Other", "Sideboard", "Maybeboard"].includes(section)) {
+        addStat(overview, section, String(count));
+      }
+    }
+
+    const unknownTypes = quantityOf(active.filter((entry) => !entry.type_line));
+    if (unknownTypes) {
+      addNote(
+        overview,
+        `${unknownTypes} cards need type data. Refresh card data to classify them.`,
+      );
+    }
+
+    function valueRow(label: string, cards: Entry[]) {
+      let total = 0;
+      let missing = 0;
+      let priced = 0;
+      let estimated = 0;
+
+      for (const entry of cards) {
+        const price = effectivePrice(entry);
+
+        if (price.amount === null) {
+          missing += entry.quantity;
+        } else {
+          priced += entry.quantity;
+          total += price.amount * entry.quantity;
+
+          if (price.manual) {
+            estimated += entry.quantity;
+          }
+        }
+      }
+
+      addStat(
+        value,
+        label,
+        !cards.length
+          ? money(0)
+          : !priced
+            ? "Unavailable"
+            : `${money(total)}${missing ? " · partial" : ""}`,
+      );
+
+      if (missing) {
+        addNote(value, `${missing} cards have no price available.`);
+      }
+
+      if (estimated) {
+        addNote(
+          value,
+          `Includes your manual estimates for ${estimated} ${
+            estimated === 1 ? "card" : "cards"
+          }.`,
+        );
+      }
+    }
+
+    valueRow("Full deck, if all cards were real", active);
+    valueRow("Owned cards", owned);
+    valueRow("Proxy replacement value", proxies);
+
+    addNote(
+      value,
+      "USD estimates use the selected printing and finish. Sideboard and maybeboard are excluded. Prices are references, not purchase or sale guarantees.",
+    );
+
+    const dates = active
+      .map((entry) => entry.price_checked_at)
+      .filter((date): date is string => Boolean(date))
+      .map((date) => new Date(date).getTime())
+      .filter(Number.isFinite);
+
+    if (dates.length) {
+      addNote(
+        value,
+        `Oldest price check: ${new Date(Math.min(...dates)).toLocaleString()}`,
+      );
+    }
+
+    const known = active.filter((entry) => {
+      const type = (entry.type_line ?? "").split(" // ")[0].split("—")[0];
+      return (
+        Boolean(entry.type_line) &&
+        !/\bLand\b/.test(type) &&
+        entry.mana_value !== null &&
+        entry.mana_value !== undefined &&
+        Number.isFinite(Number(entry.mana_value))
+      );
+    });
+
+    const knownCount = quantityOf(known);
+    const curve = Array<number>(8).fill(0);
+    let totalMana = 0;
+
+    for (const entry of known) {
+      const manaValue = Number(entry.mana_value);
+      const bucket = Math.min(7, Math.max(0, Math.floor(manaValue)));
+      curve[bucket] += entry.quantity;
+      totalMana += manaValue * entry.quantity;
+    }
+
+    addStat(
+      mana,
+      "Average mana value · nonlands",
+      knownCount ? (totalMana / knownCount).toFixed(2) : "Unavailable",
+    );
+
+    const chart = document.createElement("div");
+    chart.className = "mana-curve";
+    const maximum = Math.max(1, ...curve);
+
+    curve.forEach((count, index) => {
+      const column = document.createElement("div");
+      column.className = "curve-column";
+      column.setAttribute(
+        "aria-label",
+        `Mana value ${index === 7 ? "7 or more" : index}: ${count} cards`,
+      );
+
+      const number = document.createElement("span");
+      number.textContent = String(count);
+
+      const track = document.createElement("div");
+      track.className = "curve-track";
+
+      const bar = document.createElement("div");
+      bar.className = "curve-bar";
+      bar.style.height = `${(count / maximum) * 100}%`;
+      track.append(bar);
+
+      const label = document.createElement("span");
+      label.textContent = index === 7 ? "7+" : String(index);
+
+      column.append(number, track, label);
+      chart.append(column);
+    });
+
+    mana.append(chart);
+    addNote(
+      mana,
+      "Includes owned cards, proxies, and commanders. Excludes lands, sideboard, maybeboard, and cards missing type or mana data.",
+    );
+
+    get("refresh-deck-data").hidden = !owner;
+  }
+
+  const overviewTabs = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(".overview-tabs [role='tab']"),
+  );
+
+  function activateOverviewTab(selected: HTMLButtonElement) {
+    for (const tab of overviewTabs) {
+      const active = tab === selected;
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+      get(tab.getAttribute("aria-controls")!).hidden = !active;
+    }
+  }
+
+  overviewTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateOverviewTab(tab));
+
+    tab.addEventListener("keydown", (event) => {
+      let next = index;
+
+      if (event.key === "ArrowRight") next = (index + 1) % overviewTabs.length;
+      else if (event.key === "ArrowLeft")
+        next = (index - 1 + overviewTabs.length) % overviewTabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = overviewTabs.length - 1;
+      else return;
+
+      event.preventDefault();
+      activateOverviewTab(overviewTabs[next]);
+      overviewTabs[next].focus();
+    });
+  });
   let pickerController: AbortController | undefined;
   let searchController: AbortController | undefined;
   const imageFor = (card: Card) =>
@@ -184,7 +593,7 @@ import Layout from "@/layouts/Layout.astro";
         | HTMLSelectElement
         | HTMLTextAreaElement
       >(
-        "#deck-settings input, #deck-settings textarea, #deck-settings select, #deck-settings button, #deck-add input, #deck-add button, .entry-actions button, .entry-actions input, #picker-add input, #picker-add select, #picker-save",
+        "#deck-settings input, #deck-settings textarea, #deck-settings select, #deck-settings button, #deck-add input, #deck-add button, .entry-actions button, .entry-actions input, .entry-actions select, #refresh-deck-data, #picker-add input, #picker-add select, #picker-save",
       )
       .forEach((element) => {
         element.disabled = busy || !owner;
@@ -226,12 +635,51 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   function renderEntries(entries: Entry[]) {
+    savedEntries = entries;
+
     const commanders = get("deck-commanders");
-    const main = get("deck-main");
+    const groups = get("deck-groups");
     commanders.replaceChildren();
-    main.replaceChildren();
+    groups.replaceChildren();
+
+    const active = entries.filter(
+      (entry) => entry.card_role === "main" || entry.card_role === "commander",
+    );
+
     get("deck-count").textContent =
-      `${entries.reduce((sum, entry) => sum + entry.quantity, 0)} / 100 cards · ${deck?.visibility ?? ""}`;
+      `${quantityOf(active)} / 100 cards · ${deck?.visibility ?? ""}`;
+
+    const lists = new Map<string, HTMLElement>([["Commanders", commanders]]);
+
+    for (const section of sectionNames) {
+      const sectionEntries = entries.filter(
+        (entry) => sectionFor(entry) === section,
+      );
+
+      if (
+        !sectionEntries.length &&
+        !["Sideboard", "Maybeboard"].includes(section)
+      ) {
+        continue;
+      }
+
+      const extra = section === "Sideboard" || section === "Maybeboard";
+      const container = document.createElement("details");
+      container.open = !extra;
+      container.className = "panel";
+
+      const heading = document.createElement("summary");
+      heading.textContent = `${section} (${quantityOf(sectionEntries)})`;
+
+      const list = document.createElement("ul");
+      list.className = "card-grid";
+
+      container.append(heading, list);
+      groups.append(container);
+      lists.set(section, list);
+    }
+
+    renderOverview(entries);
     for (const entry of entries) {
       const item = document.createElement("li");
       item.className = "entry";
@@ -255,6 +703,26 @@ import Layout from "@/layouts/Layout.astro";
       const meta = document.createElement("p");
       meta.textContent = `${entry.set_name} #${entry.collector_number} · ${entry.finish}`;
       item.append(heading, meta);
+      const price = effectivePrice(entry);
+      const priceLabel = document.createElement("p");
+
+      priceLabel.textContent =
+        price.amount === null
+          ? "Price unavailable"
+          : `${money(price.amount)} per copy · ${
+              price.manual ? "Manual estimate" : "Scryfall"
+            }`;
+
+      item.append(priceLabel);
+
+      if (price.manual && entry.manual_price_updated_at) {
+        addNote(
+          item,
+          `Estimate entered: ${new Date(
+            entry.manual_price_updated_at,
+          ).toLocaleDateString()}`,
+        );
+      }
       if (entry.is_proxy) {
         const badge = document.createElement("span");
         badge.className = "proxy-badge";
@@ -339,12 +807,155 @@ import Layout from "@/layouts/Layout.astro";
           });
         });
 
-        actions.append(count, update, proxyButton, remove);
-        item.append(actions);
+        const destination = document.createElement("select");
+        destination.setAttribute("aria-label", `Section for ${entry.name}`);
+
+        for (const [value, label] of Object.entries(roleNames)) {
+          destination.add(new Option(label, value));
+        }
+        destination.value = entry.card_role;
+
+        const move = document.createElement("button");
+        move.type = "button";
+        move.textContent = "Move card";
+
+        move.addEventListener("click", () => {
+          const selectedRole = destination.value;
+          if (selectedRole === entry.card_role) return;
+
+          void mutate(async () => {
+            const { data, error } = await supabase
+              .from("deck_cards")
+              .update({ card_role: selectedRole })
+              .eq("id", entry.id)
+              .eq("deck_id", deckId!)
+              .select("id");
+
+            if (error?.code === "23505") {
+              throw new Error(
+                "That printing and finish already exists in the destination. Adjust its quantity there first.",
+              );
+            }
+            if (error) throw error;
+            if (!data?.length) throw new Error("Card was not moved.");
+
+            await loadEntries();
+            message(`Moved ${entry.name} to ${roleNames[selectedRole]}.`);
+          });
+        });
+
+        if (entry.price_usd === null || entry.manual_price_usd !== null) {
+          const estimateLabel = document.createElement("label");
+          estimateLabel.textContent = "Your estimate per copy (USD)";
+
+          const estimate = document.createElement("input");
+          estimate.type = "number";
+          estimate.min = "0";
+          estimate.max = "99999999.99";
+          estimate.step = "0.01";
+          estimate.inputMode = "decimal";
+          estimate.placeholder = "Enter estimated value";
+          estimate.value =
+            entry.manual_price_usd === null
+              ? ""
+              : String(entry.manual_price_usd);
+
+          estimateLabel.append(estimate);
+
+          const explanation = document.createElement("p");
+          explanation.textContent =
+            "Your estimate stays unchanged until you edit it. When a price refresh finds a Scryfall price, that price takes priority.";
+
+          const saveEstimate = document.createElement("button");
+          saveEstimate.type = "button";
+          saveEstimate.textContent = "Save estimate";
+
+          saveEstimate.addEventListener("click", () => {
+            const raw = estimate.value.trim();
+
+            if (!raw) {
+              estimate.focus();
+              message("Enter an estimated value first.");
+              return;
+            }
+
+            if (!estimate.reportValidity()) return;
+
+            const amount = Number(raw);
+            if (
+              !Number.isFinite(amount) ||
+              amount < 0 ||
+              amount > 99999999.99
+            ) {
+              message("Enter a valid estimate.");
+              return;
+            }
+
+            void mutate(async () => {
+              const { data, error } = await supabase
+                .from("deck_cards")
+                .update({
+                  manual_price_usd: amount,
+                  manual_price_updated_at: new Date().toISOString(),
+                })
+                .eq("id", entry.id)
+                .eq("deck_id", deckId!)
+                .select("id");
+
+              if (error) throw error;
+              if (!data?.length) throw new Error("Estimate was not saved.");
+
+              await loadEntries();
+              message(`Estimate saved for ${entry.name}.`);
+            });
+          });
+
+          actions.append(estimateLabel, explanation, saveEstimate);
+
+          if (entry.manual_price_usd !== null) {
+            const clearEstimate = document.createElement("button");
+            clearEstimate.type = "button";
+            clearEstimate.textContent = "Clear estimate";
+
+            clearEstimate.addEventListener("click", () => {
+              void mutate(async () => {
+                const { data, error } = await supabase
+                  .from("deck_cards")
+                  .update({
+                    manual_price_usd: null,
+                    manual_price_updated_at: null,
+                  })
+                  .eq("id", entry.id)
+                  .eq("deck_id", deckId!)
+                  .select("id");
+
+                if (error) throw error;
+                if (!data?.length) throw new Error("Estimate was not cleared.");
+
+                await loadEntries();
+                message(`Estimate cleared for ${entry.name}.`);
+              });
+            });
+
+            actions.append(clearEstimate);
+          }
+        }
+
+        actions.append(count, update, proxyButton, destination, move, remove);
+
+        const editor = document.createElement("details");
+        editor.className = "entry-editor";
+
+        const summary = document.createElement("summary");
+        summary.textContent = "Edit card";
+        summary.setAttribute("aria-label", `Edit ${entry.name}`);
+
+        editor.append(summary, actions);
+        item.append(editor);
       }
-      (entry.card_role === "commander" ? commanders : main).append(item);
+      lists.get(sectionFor(entry))?.append(item);
     }
-    for (const group of [commanders, main]) {
+    for (const group of lists.values()) {
       if (!group.children.length) {
         const empty = document.createElement("li");
         empty.textContent = "No cards added yet.";
@@ -364,7 +975,7 @@ import Layout from "@/layouts/Layout.astro";
       const { data, error } = await supabase
         .from("deck_cards")
         .select(
-          "id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy",
+          "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at",
         )
         .eq("deck_id", deckId!)
         .order("name", { ascending: true })
@@ -397,7 +1008,13 @@ import Layout from "@/layouts/Layout.astro";
     get("deck-add").hidden = true;
     get("deck-results").replaceChildren();
     get("deck-commanders").replaceChildren();
-    get("deck-main").replaceChildren();
+    get("deck-groups").replaceChildren();
+    savedEntries = [];
+    get("panel-overview").replaceChildren();
+    get("panel-value").replaceChildren();
+    get("panel-mana").replaceChildren();
+    get("refresh-deck-data").hidden = true;
+    get("deck-data-status").textContent = "";
     get("deck-count").textContent = "";
     get("deck-heading").textContent = "Commander deck";
     controls();
@@ -632,7 +1249,7 @@ import Layout from "@/layouts/Layout.astro";
         results.append(li);
       }
       get("deck-search-status").textContent =
-        `Showing ${Math.min(12, page.data.length)} results. Choose a printing to add a card.${page.has_more || page.data.length > 12 ? " Narrow your search for other matches." : ""}`;
+        `Showing ${Math.min(20, page.data.length)} results. Choose a printing to add a card.${page.has_more || page.data.length > 20 ? " Narrow your search for other matches." : ""}`;
       controls();
     } catch (error) {
       if (!controller.signal.aborted && current === version)
@@ -669,6 +1286,7 @@ import Layout from "@/layouts/Layout.astro";
           quantity: amount,
           card_role: selectedRole,
           is_proxy: selectedProxy,
+          ...cardData(card, selectedFinish),
           image_url: imageFor(card) ?? null,
           scryfall_uri: card.scryfall_uri,
         })
@@ -689,6 +1307,94 @@ import Layout from "@/layouts/Layout.astro";
       message(`Added ${card.name}.`);
     });
   });
+
+  get("refresh-deck-data").addEventListener("click", () => {
+    const entries = [...savedEntries];
+    const expectedVersion = version;
+
+    void mutate(async () => {
+      const cache = new Map<string, Card>();
+      let updated = 0;
+      let failure = "";
+
+      try {
+        for (const entry of entries) {
+          await requireOwner(expectedVersion);
+
+          get("deck-data-status").textContent =
+            `Updating ${updated + 1} of ${entries.length}: ${entry.name}…`;
+
+          let card = cache.get(entry.scryfall_id);
+
+          if (!card) {
+            const controller = new AbortController();
+            const timer = window.setTimeout(() => controller.abort(), 15000);
+
+            try {
+              const response = await fetch(
+                `https://api.scryfall.com/cards/${encodeURIComponent(entry.scryfall_id)}`,
+                {
+                  signal: controller.signal,
+                  headers: { Accept: "application/json" },
+                },
+              );
+
+              if (!response.ok) {
+                throw new Error(
+                  response.status === 429
+                    ? "Scryfall asked us to slow down. Try again later."
+                    : `Couldn’t retrieve ${entry.name}. Try again later.`,
+                );
+              }
+
+              card = (await response.json()) as Card;
+
+              if (card.id !== entry.scryfall_id) {
+                throw new Error("The returned printing did not match.");
+              }
+
+              cache.set(entry.scryfall_id, card);
+            } finally {
+              window.clearTimeout(timer);
+            }
+
+            await new Promise((resolve) => window.setTimeout(resolve, 150));
+          }
+
+          await requireOwner(expectedVersion);
+
+          const { data, error } = await supabase
+            .from("deck_cards")
+            .update(cardData(card, entry.finish))
+            .eq("id", entry.id)
+            .eq("deck_id", deckId!)
+            .eq("scryfall_id", entry.scryfall_id)
+            .eq("finish", entry.finish)
+            .select("id");
+
+          if (error) throw error;
+          if (!data?.length) {
+            throw new Error(
+              "A card changed or was removed. Refresh and try again.",
+            );
+          }
+
+          updated++;
+        }
+      } catch (error) {
+        failure = errorText(error);
+      }
+
+      if (expectedVersion !== version) return;
+
+      await loadEntries();
+      get("deck-data-status").textContent =
+        `Updated ${updated} of ${entries.length} entries.${
+          failure ? ` ${failure}` : " Card data and prices are current."
+        }`;
+    });
+  });
+
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_IN" || event === "SIGNED_OUT")
       window.setTimeout(() => void load(), 0);
@@ -773,41 +1479,50 @@ import Layout from "@/layouts/Layout.astro";
     outline: 2px solid var(--color-pyroduck-lime);
     outline-offset: 3px;
   }
-  .card-grid {
+  .deck-editor :global(.card-grid) {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
     gap: 1.25rem;
     padding: 0;
     list-style: none;
   }
-  .card-grid :global(.entry) {
+
+  .deck-editor :global(.card-grid .entry) {
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  .card-grid :global(img) {
+
+  .deck-editor :global(.card-grid img) {
     display: block;
     width: 100%;
     height: auto;
     border-radius: 0.75rem;
   }
-  .card-grid :global(h3) {
+
+  .deck-editor :global(.card-grid h3) {
     margin-top: 0.75rem;
     font-weight: 700;
   }
-  .card-grid :global(p),
+
+  .deck-editor :global(.card-grid p),
+  .deck-editor :global(.muted),
   .muted {
     color: var(--color-brand-muted);
     font-size: 0.875rem;
     line-height: 1.6;
   }
-  .card-grid :global(button) {
+
+  .deck-editor :global(.card-grid button) {
     margin-top: 0.5rem;
   }
-  .card-grid :global(.entry-actions) {
+
+  .deck-editor :global(.entry-actions) {
     display: grid;
     gap: 0.35rem;
   }
-  .card-grid :global(input) {
+
+  .deck-editor :global(.entry-actions input),
+  .deck-editor :global(.entry-actions select) {
     width: 100%;
     min-height: 44px;
     padding: 0.5rem;
@@ -815,7 +1530,9 @@ import Layout from "@/layouts/Layout.astro";
     border-radius: 0.5rem;
     background: var(--color-pyroduck-void);
     color: var(--color-brand-text);
+    font: inherit;
   }
+
   #deck-status {
     margin-top: 1rem;
     color: var(--color-brand-muted);
@@ -936,5 +1653,183 @@ import Layout from "@/layouts/Layout.astro";
     to {
       background-position: 100% 100%;
     }
+  }
+
+  .deck-summary {
+    display: grid;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .deck-summary > .panel {
+    min-width: 0;
+  }
+
+  .overview-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .overview-tabs button {
+    border: 1px solid var(--color-pyroduck-plasma);
+    background: transparent;
+    color: var(--color-brand-text);
+  }
+
+  .overview-tabs button[aria-selected="true"] {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  .overview-panel :global(.stat-row) {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding-block: 0.65rem;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 18%, transparent);
+  }
+
+  .overview-panel :global(.stat-row strong) {
+    color: var(--color-pyroduck-lime);
+    text-align: right;
+  }
+
+  .overview-panel :global(.muted),
+  #deck-data-status {
+    margin-top: 0.75rem;
+  }
+
+  #refresh-deck-data {
+    margin-top: 1.25rem;
+  }
+
+  #deck-groups :global(.panel) {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 30%, transparent);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  #deck-groups :global(h2),
+  #deck-groups :global(summary) {
+    margin: 0 0 1rem;
+    color: var(--color-brand-text);
+    font-size: 1.35rem;
+    font-weight: 700;
+  }
+
+  #deck-groups :global(summary) {
+    cursor: pointer;
+  }
+
+  .overview-panel :global(.mana-curve) {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-top: 1.5rem;
+  }
+
+  .overview-panel :global(.curve-column) {
+    display: grid;
+    gap: 0.4rem;
+    text-align: center;
+    font-size: 0.8rem;
+  }
+
+  .overview-panel :global(.curve-track) {
+    display: flex;
+    align-items: flex-end;
+    height: 120px;
+  }
+
+  .overview-panel :global(.curve-bar) {
+    width: 100%;
+    border-radius: 0.35rem 0.35rem 0 0;
+    background: var(--color-pyroduck-plasma);
+  }
+
+  @media (min-width: 768px) {
+    .deck-summary {
+      grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+    }
+  }
+
+  /* Equal image areas and aligned editing controls. */
+  .deck-editor :global(.card-grid .entry) {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+  }
+
+  .deck-editor :global(.card-grid .card-art) {
+    flex: none;
+    aspect-ratio: 488 / 680;
+  }
+
+  .deck-editor :global(.card-grid .card-art img) {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .deck-editor :global(.card-grid h3) {
+    margin-bottom: 0.25rem;
+  }
+
+  .deck-editor :global(.proxy-badge) {
+    align-self: flex-start;
+  }
+
+  .deck-editor :global(.entry-editor) {
+    margin-top: auto;
+    padding-top: 0.75rem;
+  }
+
+  .deck-editor :global(.entry-editor > summary) {
+    display: block;
+    min-height: 44px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .deck-editor :global(.entry-editor > summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  .deck-editor :global(.entry-editor > summary::after) {
+    content: " +";
+  }
+
+  .deck-editor :global(.entry-editor[open] > summary::after) {
+    content: " −";
+  }
+
+  .deck-editor :global(.entry-editor > summary:hover) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .deck-editor :global(.entry-editor .entry-actions) {
+    margin-top: 0.75rem;
+  }
+
+  /* Overrides the section-summary styling for individual card editors. */
+  #deck-groups :global(.entry-editor > summary) {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-pyroduck-plasma);
   }
 </style>
