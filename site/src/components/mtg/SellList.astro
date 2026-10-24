@@ -326,6 +326,7 @@
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   type ColorGroup =
@@ -930,24 +931,33 @@
       listStatus.textContent = "Loading your listings…";
 
       try {
-        const loaded: Listing[] = [];
-        const pageSize = 500;
-        for (let start = 0; ; start += pageSize) {
-          const { data, error } = await supabase
-            .from("sell_cards")
-            .select(
-              "id, name, set_name, collector_number, finish, asking_price_usd, quantity, condition, notes, status, color_group, image_url, front_photo_path, back_photo_path",
-            )
-            .eq("user_id", currentUser)
-            .neq("status", "sold")
-            .order("name", { ascending: true })
-            .order("id", { ascending: true })
-            .range(start, start + pageSize - 1);
-          if (version !== listVersion || userId !== currentUser) return;
-          if (error) throw error;
-          loaded.push(...((data ?? []) as Listing[]));
-          if (!data || data.length < pageSize) break;
-        }
+        const loaded = await loadAllPages<Listing>(
+          async (from, to) => {
+            const { data, error } = await supabase
+              .from("sell_cards")
+              .select(
+                "id, name, set_name, collector_number, finish, asking_price_usd, quantity, condition, notes, status, color_group, image_url, front_photo_path, back_photo_path",
+              )
+              .eq("user_id", currentUser)
+              .neq("status", "sold")
+              .order("name", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to);
+
+            return { data: data as Listing[] | null, error };
+          },
+          {
+            pageSize: 500,
+            isCurrent: () => version === listVersion && userId === currentUser,
+          },
+        );
+
+        if (
+          loaded === null ||
+          version !== listVersion ||
+          userId !== currentUser
+        )
+          return;
 
         const paths = [
           ...new Set(
@@ -1067,26 +1077,28 @@
       historyStatus.textContent = "Loading sales history…";
 
       try {
-        const sales: Sale[] = [];
-        const pageSize = 500;
+        const sales = await loadAllPages<Sale>(
+          async (from, to) => {
+            const { data, error } = await supabase
+              .from("card_sales")
+              .select(
+                "id, listing_id, image_url, name, set_name, collector_number, finish, condition, asking_price_usd, sold_price_usd, quantity, sold_on",
+              )
+              .eq("user_id", seller)
+              .order("sold_on", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to);
 
-        for (let start = 0; ; start += pageSize) {
-          const { data, error } = await supabase
-            .from("card_sales")
-            .select(
-              "id, listing_id, image_url, name, set_name, collector_number, finish, condition, asking_price_usd, sold_price_usd, quantity, sold_on",
-            )
-            .eq("user_id", seller)
-            .order("sold_on", { ascending: false })
-            .order("id", { ascending: false })
-            .range(start, start + pageSize - 1);
+            return { data: data as Sale[] | null, error };
+          },
+          {
+            pageSize: 500,
+            isCurrent: () => version === historyVersion && seller === userId,
+          },
+        );
 
-          if (version !== historyVersion || seller !== userId) return;
-          if (error) throw error;
-
-          sales.push(...((data ?? []) as Sale[]));
-          if (!data || data.length < pageSize) break;
-        }
+        if (sales === null || version !== historyVersion || seller !== userId)
+          return;
 
         let totalCents = 0;
         let copies = 0;
