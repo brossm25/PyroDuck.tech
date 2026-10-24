@@ -96,6 +96,7 @@ import Layout from "@/layouts/Layout.astro";
     />
 
     <p id="proxy-finder-status" role="status"></p>
+    <p id="proxy-chase-status" role="status"></p>
     <ul id="proxy-finder-results"></ul>
   </dialog>
 </Layout>
@@ -189,6 +190,150 @@ import Layout from "@/layouts/Layout.astro";
   )!;
 
   let collectionDecks: Deck[] = [];
+  let addingProxyToChase = false;
+  const chasedDeckCardIds = new Set<string>();
+  let chaseStateReady = false;
+  let chaseStateRequest = 0;
+
+  async function loadProxyChaseState() {
+    const stateRequest = ++chaseStateRequest;
+    const expectedRequest = requestId;
+    const expectedUser = userId;
+    chaseStateReady = false;
+    chasedDeckCardIds.clear();
+    renderProxyFinder();
+
+    const actionStatus = document.querySelector<HTMLElement>(
+      "#proxy-chase-status",
+    )!;
+    actionStatus.textContent = "Checking your chase list…";
+
+    const isCurrent = () =>
+      stateRequest === chaseStateRequest &&
+      expectedRequest === requestId &&
+      expectedUser === userId;
+
+    try {
+      if (!expectedUser) return;
+
+      const ids = new Set<string>();
+      let offset = 0;
+      const pageSize = 100;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("chase_cards")
+          .select("id, source_deck_card_id")
+          .eq("user_id", expectedUser)
+          .not("source_deck_card_id", "is", null)
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+
+        if (!isCurrent()) return;
+        if (error) throw error;
+
+        const page = data ?? [];
+        for (const row of page) {
+          if (row.source_deck_card_id) {
+            ids.add(row.source_deck_card_id);
+          }
+        }
+
+        if (page.length === 0) break;
+        offset += page.length;
+      }
+
+      if (!isCurrent()) return;
+
+      for (const id of ids) chasedDeckCardIds.add(id);
+      chaseStateReady = true;
+      actionStatus.textContent = "";
+      renderProxyFinder();
+    } catch {
+      if (!isCurrent()) return;
+      actionStatus.textContent =
+        "Couldn’t check your chase list. Close and reopen this window to retry.";
+      renderProxyFinder();
+    }
+  }
+
+  async function addProxyToChase(
+    deck: Deck,
+    card: PreviewCard,
+    button: HTMLButtonElement,
+  ) {
+    if (
+      !userId ||
+      loading ||
+      addingProxyToChase ||
+      !chaseStateReady ||
+      chasedDeckCardIds.has(card.id)
+    )
+      return;
+
+    const expectedRequest = requestId;
+    const expectedUser = userId;
+    const actionStatus = document.querySelector<HTMLElement>(
+      "#proxy-chase-status",
+    )!;
+
+    addingProxyToChase = true;
+    button.disabled = true;
+    button.textContent = "Adding…";
+    actionStatus.textContent = `Adding ${card.name} for ${deck.name}…`;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (expectedRequest !== requestId) return;
+      if (sessionError) throw sessionError;
+
+      if (session?.user.id !== expectedUser) {
+        throw new Error("Your sign-in changed. Refresh and try again.");
+      }
+
+      const { data, error } = await supabase.rpc("add_deck_proxy_to_chase", {
+        p_deck_card_id: card.id,
+      });
+
+      if (expectedRequest !== requestId || userId !== expectedUser) return;
+      if (error) throw error;
+
+      if (data !== "added" && data !== "already_exists") {
+        throw new Error("Couldn’t confirm the chase entry. Try again.");
+      }
+
+      chasedDeckCardIds.add(card.id);
+      button.textContent = "On chase list";
+      button.dataset.added = "true";
+
+      actionStatus.textContent =
+        data === "added"
+          ? `Added ${card.name} for ${deck.name} to your chase list.`
+          : `${card.name} is already on your chase list for ${deck.name}.`;
+    } catch (error) {
+      if (expectedRequest === requestId && userId === expectedUser) {
+        actionStatus.textContent =
+          typeof error === "object" && error !== null && "message" in error
+            ? String(error.message)
+            : "Couldn’t add this card. Please try again.";
+
+        button.textContent = "Add to chase list";
+      }
+    } finally {
+      addingProxyToChase = false;
+      if (expectedRequest === requestId && userId === expectedUser) {
+        renderProxyFinder();
+      }
+
+      if (button.isConnected) {
+        button.disabled = button.dataset.added === "true";
+      }
+    }
+  }
 
   function renderProxyFinder() {
     proxyResults.replaceChildren();
@@ -284,25 +429,50 @@ import Layout from "@/layouts/Layout.astro";
       link.href = `/mtg/deck?id=${encodeURIComponent(deck.id)}`;
       link.textContent = `Open ${deck.name} →`;
 
-      information.append(name, printing, value, link);
+      const chaseButton = document.createElement("button");
+      chaseButton.type = "button";
+      chaseButton.className = "proxy-chase-button";
+      const alreadyChased = chasedDeckCardIds.has(card.id);
+
+      chaseButton.textContent = alreadyChased
+        ? "On chase list"
+        : chaseStateReady
+          ? "Add to chase list"
+          : "Checking chase list…";
+
+      chaseButton.disabled =
+        alreadyChased || !chaseStateReady || addingProxyToChase;
+
+      if (alreadyChased) {
+        chaseButton.dataset.added = "true";
+      }
+      chaseButton.addEventListener("click", () => {
+        void addProxyToChase(deck, card, chaseButton);
+      });
+
+      information.append(name, printing, value, link, chaseButton);
       item.append(information);
       proxyResults.append(item);
     }
   }
 
   document.querySelector("#find-proxies")?.addEventListener("click", () => {
-    if (!userId || loading) return;
+    if (!userId || loading || addingProxyToChase) return;
     proxyQuery.value = "";
-    renderProxyFinder();
     proxyFinder.showModal();
+    void loadProxyChaseState();
   });
 
   proxyQuery.addEventListener("input", renderProxyFinder);
 
   function clearCollectionSummary() {
+    chaseStateRequest++;
+    chaseStateReady = false;
+    chasedDeckCardIds.clear();
     if (proxyFinder.open) proxyFinder.close();
     collectionDecks = [];
     proxyQuery.value = "";
+    document.querySelector("#proxy-chase-status")!.textContent = "";
     proxyResults.replaceChildren();
     proxyStatus.textContent = "";
     if (collectionSummary) collectionSummary.hidden = true;
@@ -1210,5 +1380,36 @@ import Layout from "@/layouts/Layout.astro";
   #proxy-finder :global(:focus-visible) {
     outline: 2px solid var(--color-pyroduck-lime);
     outline-offset: 3px;
+  }
+
+  #proxy-chase-status {
+    margin-block: 0.75rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  #proxy-finder-results :global(button.proxy-chase-button) {
+    display: block;
+    min-height: 44px;
+    margin-top: 0.5rem;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #proxy-finder-results
+    :global(button.proxy-chase-button:hover:not(:disabled)) {
+    background: var(--color-pyroduck-lime);
+  }
+
+  #proxy-finder-results :global(button.proxy-chase-button:disabled) {
+    opacity: 0.6;
+    cursor: default;
   }
 </style>

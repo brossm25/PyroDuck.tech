@@ -72,6 +72,14 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
   interface ChaseCard {
     id: string;
+    quantity: number;
+    source_deck_card_id: string | null;
+    source_card: {
+      source_deck: {
+        id: string;
+        name: string;
+      } | null;
+    } | null;
     scryfall_id: string;
     oracle_id: string | null;
     name: string;
@@ -238,12 +246,29 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
           if (!heading) return;
           event.preventDefault();
           heading.focus({ preventScroll: true });
-          heading.scrollIntoView({
+          const header = document.querySelector<HTMLElement>("header");
+          const headerStyle = header ? getComputedStyle(header) : null;
+          const headerOverlaps =
+            headerStyle?.position === "sticky" ||
+            headerStyle?.position === "fixed";
+
+          const headerHeight =
+            header && headerOverlaps
+              ? header.getBoundingClientRect().height
+              : 0;
+
+          const top =
+            window.scrollY +
+            heading.getBoundingClientRect().top -
+            headerHeight -
+            20;
+
+          window.scrollTo({
+            top: Math.max(0, top),
             behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
               .matches
               ? "instant"
               : "smooth",
-            block: "start",
           });
         });
         letterLinks.append(link);
@@ -342,57 +367,58 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     if (cards.length === 0) return;
 
     let totalCents = 0;
+    let copies = 0;
     let missing = 0;
     let savedFallbacks = 0;
     let stale = 0;
 
     for (const card of cards) {
+      const quantity = card.quantity ?? 1;
+      copies += quantity;
+
       const price = displayedPrice(card);
 
       if (price === null) {
-        missing++;
+        missing += quantity;
         continue;
       }
 
-      totalCents += Math.round(price * 100);
+      totalCents += Math.round(price * 100) * quantity;
 
       if (!card.current_price_checked_at) {
-        savedFallbacks++;
+        savedFallbacks += quantity;
       } else if (needsRefresh(card)) {
-        stale++;
+        stale += quantity;
       }
     }
 
     if (totalElement) {
       totalElement.textContent =
-        missing === cards.length
+        missing === copies
           ? "Total chase-list estimate: unavailable"
           : `Total chase-list estimate: ${usdFormatter.format(
               totalCents / 100,
-            )} USD`;
+            )} USD${missing ? " · partial" : ""}`;
     }
 
-    const notes = ["One copy per saved entry."];
+    const notes = [
+      `${copies} ${copies === 1 ? "copy" : "copies"} across ` +
+        `${cards.length} saved ${cards.length === 1 ? "entry" : "entries"}.`,
+    ];
 
-    if (savedFallbacks > 0) {
+    if (savedFallbacks) {
       notes.push(
-        `${savedFallbacks} ${
-          savedFallbacks === 1 ? "entry uses its" : "entries use their"
-        } original saved price until refreshed.`,
+        `${savedFallbacks} copies use original saved prices until refreshed.`,
       );
     }
 
-    if (stale > 0) {
-      notes.push(
-        `${stale} ${stale === 1 ? "estimate is" : "estimates are"} over 24 hours old.`,
-      );
+    if (stale) {
+      notes.push(`${stale} copies have estimates over 24 hours old.`);
     }
 
-    if (missing > 0) {
+    if (missing) {
       notes.push(
-        `${missing} ${
-          missing === 1 ? "entry has" : "entries have"
-        } no available price and ${missing === 1 ? "is" : "are"} excluded.`,
+        `${missing} copies have no available price and are excluded from the estimate.`,
       );
     }
 
@@ -469,13 +495,43 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
         link.href = card.scryfall_uri;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = `${card.name} ↗`;
+        link.textContent = `${card.quantity ?? 1} × ${card.name} ↗`;
         title.append(link);
       } else {
-        title.textContent = card.name;
+        title.textContent = `${card.quantity ?? 1} × ${card.name}`;
       }
 
       item.append(title);
+
+      if (card.source_deck_card_id) {
+        const source = document.createElement("p");
+        source.className = "chase-list-meta";
+
+        const sourceDeck = card.source_card?.source_deck;
+
+        if (sourceDeck) {
+          const link = document.createElement("a");
+          link.href = `/mtg/deck?id=${encodeURIComponent(sourceDeck.id)}`;
+          link.textContent = `For ${sourceDeck.name} →`;
+          source.append(link);
+        } else {
+          source.textContent = "Linked to a deck";
+        }
+
+        item.append(source);
+      }
+
+      const unitPrice = displayedPrice(card);
+      addText(
+        item,
+        "chase-list-meta",
+        unitPrice === null
+          ? "Replacement value unavailable"
+          : `${usdFormatter.format(unitPrice)} per copy · ` +
+              `${usdFormatter.format(
+                (Math.round(unitPrice * 100) * (card.quantity ?? 1)) / 100,
+              )} total`,
+      );
 
       addText(
         item,
@@ -701,7 +757,12 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
     if (
       !window.confirm(
-        `Remove ${card.name} — ${card.set_name} #${card.collector_number} (${finishLabel(card.finish)}) from your chase list?`,
+        `Remove this chase entry for ${card.quantity ?? 1} × ${card.name} — ` +
+          `${card.set_name} #${card.collector_number} (${finishLabel(card.finish)})?` +
+          (card.source_card?.source_deck
+            ? ` This entry is for ${card.source_card.source_deck.name}.`
+            : "") +
+          " This does not remove cards from your decks.",
       )
     ) {
       return;
@@ -806,7 +867,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
         const { data, error } = await supabase
           .from("chase_cards")
           .select(
-            "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at",
+            "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at, quantity, source_deck_card_id, source_card:deck_cards!chase_cards_source_deck_card_fkey(source_deck:decks!deck_cards_deck_id_fkey(id, name))",
           )
           .eq("user_id", session.user.id)
           .order("name", { ascending: true })
