@@ -56,6 +56,7 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
 
   interface Player {
     id: string;
@@ -82,11 +83,6 @@ import Layout from "@/layouts/Layout.astro";
     id: string;
     name: string;
     visibility: string;
-  }
-
-  interface QueryResult {
-    data: unknown[] | null;
-    error: { message: string } | null;
   }
 
   const root = document.querySelector<HTMLElement>(".player-page");
@@ -179,32 +175,11 @@ import Layout from "@/layouts/Layout.astro";
       return item;
     }
 
-    async function readAll(
-      query: (from: number, to: number) => PromiseLike<QueryResult>,
-      active: number,
-    ) {
-      const rows: unknown[] = [];
-
-      for (let from = 0; ; from += 100) {
-        if (active !== version) return null;
-
-        const { data, error } = await query(from, from + 99);
-
-        if (active !== version) return null;
-        if (error) throw new Error(error.message);
-
-        const batch = data ?? [];
-        rows.push(...batch);
-
-        if (batch.length < 100) return rows;
-      }
-    }
-
     async function loadChase(active: number) {
       chaseStatus.textContent = "Loading chase cards…";
 
       try {
-        const rows = await readAll(
+        const rows = await loadAllPages<unknown>(
           (from, to) =>
             supabase
               .from("chase_cards")
@@ -213,7 +188,7 @@ import Layout from "@/layouts/Layout.astro";
               .order("name")
               .order("id")
               .range(from, to),
-          active,
+          { isCurrent: () => active === version },
         );
 
         if (!rows || active !== version) return;
@@ -237,7 +212,7 @@ import Layout from "@/layouts/Layout.astro";
       decksStatus.textContent = "Loading shared decks…";
 
       try {
-        const rows = await readAll(
+        const rows = await loadAllPages<unknown>(
           (from, to) =>
             supabase
               .from("decks")
@@ -246,7 +221,7 @@ import Layout from "@/layouts/Layout.astro";
               .order("name")
               .order("id")
               .range(from, to),
-          active,
+          { isCurrent: () => active === version },
         );
 
         if (!rows || active !== version) return;
@@ -288,7 +263,7 @@ import Layout from "@/layouts/Layout.astro";
       salesStatus.textContent = "Loading sale listings…";
 
       try {
-        const rows = await readAll(
+        const rows = await loadAllPages<unknown>(
           (from, to) =>
             supabase
               .from("sell_cards")
@@ -301,7 +276,7 @@ import Layout from "@/layouts/Layout.astro";
               .order("name")
               .order("id")
               .range(from, to),
-          active,
+          { isCurrent: () => active === version },
         );
 
         if (!rows || active !== version) return;
