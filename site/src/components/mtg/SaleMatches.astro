@@ -43,6 +43,7 @@
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface SaleMatch {
     listing_id: string;
@@ -657,26 +658,10 @@
 
     window.addEventListener("chase-list-loaded", scheduleRefresh);
 
-    let observedAuthUserId: string | null | undefined;
+    const accountChanged = createAccountChangeGuard();
 
     supabase.auth.onAuthStateChange((event, session) => {
-      if (
-        event !== "INITIAL_SESSION" &&
-        event !== "SIGNED_IN" &&
-        event !== "SIGNED_OUT"
-      ) {
-        return;
-      }
-
-      const nextUserId = session?.user.id ?? null;
-
-      if (observedAuthUserId === undefined) {
-        observedAuthUserId = nextUserId;
-        return;
-      }
-
-      if (nextUserId === observedAuthUserId) return;
-      observedAuthUserId = nextUserId;
+      if (!accountChanged(event, session)) return;
 
       version++;
       viewerId = null;
