@@ -70,6 +70,7 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface Conversation {
@@ -250,30 +251,27 @@ import Layout from "@/layouts/Layout.astro";
       threadStatus.textContent = "Loading messages…";
 
       try {
-        const rows: SaleMessage[] = [];
+        const isCurrent = () =>
+          active === threadVersion &&
+          viewer === user &&
+          selected?.id === conversation.id;
 
-        for (let offset = 0; ; offset += 100) {
-          const { data, error } = await supabase
-            .from("sale_messages")
-            .select("id, sender_id, body, created_at")
-            .eq("conversation_id", conversation.id)
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true })
-            .range(offset, offset + 99);
+        const rows = await loadAllPages<SaleMessage>(
+          async (from, to) => {
+            const { data, error } = await supabase
+              .from("sale_messages")
+              .select("id, sender_id, body, created_at")
+              .eq("conversation_id", conversation.id)
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to);
 
-          if (
-            active !== threadVersion ||
-            viewer !== user ||
-            selected?.id !== conversation.id
-          )
-            return;
+            return { data: data as SaleMessage[] | null, error };
+          },
+          { isCurrent },
+        );
 
-          if (error) throw error;
-
-          const batch = (data ?? []) as SaleMessage[];
-          rows.push(...batch);
-          if (batch.length < 100) break;
-        }
+        if (rows === null || !isCurrent()) return;
 
         messages.replaceChildren();
 
