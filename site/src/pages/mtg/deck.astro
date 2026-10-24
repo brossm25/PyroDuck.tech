@@ -233,6 +233,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   import { loadAllPages } from "@/lib/paginate";
   import { loadDeckPrintings } from "@/lib/deckPrintings";
   import { renderDeckOverview } from "@/lib/deckOverview";
+  import { createDeckPrintingPreview } from "@/lib/deckPrintingPreview";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
   import { setupDeckImport } from "@/lib/deckImportUI";
   import {
@@ -1404,43 +1405,16 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     });
   });
 
-  function updateFinishEffect() {
-    pickerArt.dataset.finish = finish.value;
-  }
-
-  finish.addEventListener("change", updateFinishEffect);
-
-  function previewPrinting() {
-    const card = printings[Number(printing.value)];
-    finish.replaceChildren();
-    image.hidden = true;
-    pickerArt.hidden = true;
-    if (!card) {
-      save.disabled = true;
-      return;
-    }
-    for (const value of card.finishes)
-      finish.add(
-        new Option(
-          value === "nonfoil"
-            ? "Nonfoil"
-            : value === "etched"
-              ? "Etched foil"
-              : "Foil",
-          value,
-        ),
-      );
-    const url = imageFor(card);
-    if (url) {
-      image.src = url;
-      image.alt = card.name;
-      image.hidden = false;
-      pickerArt.hidden = false;
-    }
-    updateFinishEffect();
-    save.disabled = busy || !card.finishes.length;
-  }
-  printing.addEventListener("change", previewPrinting);
+  const previewPrinting = createDeckPrintingPreview<Card>({
+    printing,
+    finish,
+    image,
+    art: pickerArt,
+    save,
+    selectedCard: () => printings[Number(printing.value)],
+    imageFor,
+    canSave: () => owner && !busy,
+  });
   picker.addEventListener("close", () => pickerController?.abort());
 
   async function choose(card: Card) {
