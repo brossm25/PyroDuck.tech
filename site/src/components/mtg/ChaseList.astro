@@ -69,6 +69,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface ChaseCard {
@@ -838,6 +839,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     syncButtons();
 
     let loaded = false;
+    let queryErrorMessage: string | null = null;
 
     try {
       const {
@@ -860,37 +862,25 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
         return;
       }
 
-      const loadedCards: ChaseCard[] = [];
-      const pageSize = 100;
-      let offset = 0;
+      const loadedCards = await loadAllPages<ChaseCard>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("chase_cards")
+            .select(
+              "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at, quantity, source_deck_card_id, source_card:deck_cards!chase_cards_source_deck_card_fkey(source_deck:decks!deck_cards_deck_id_fkey(id, name))",
+            )
+            .eq("user_id", session.user.id)
+            .order("name", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to);
 
-      while (true) {
-        const { data, error } = await supabase
-          .from("chase_cards")
-          .select(
-            "id, scryfall_id, oracle_id, name, set_name, collector_number, finish, image_url, scryfall_uri, price_usd, price_checked_at, current_price_usd, current_price_checked_at, quantity, source_deck_card_id, source_card:deck_cards!chase_cards_source_deck_card_fkey(source_deck:decks!deck_cards_deck_id_fkey(id, name))",
-          )
-          .eq("user_id", session.user.id)
-          .order("name", { ascending: true })
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
+          if (error) queryErrorMessage = error.message;
+          return { data: data as ChaseCard[] | null, error };
+        },
+        { isCurrent: () => activeRequest === requestId },
+      );
 
-        if (activeRequest !== requestId) return;
-
-        if (error) {
-          cards = [];
-          list.replaceChildren();
-          setStatus(`Couldn’t load your chase list: ${error.message}`);
-          return;
-        }
-
-        const page = (data ?? []) as ChaseCard[];
-        loadedCards.push(...page);
-
-        if (page.length === 0) break;
-
-        offset += page.length;
-      }
+      if (loadedCards === null || activeRequest !== requestId) return;
 
       cards = loadedCards;
       renderCards();
@@ -901,7 +891,11 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
       cards = [];
       list.replaceChildren();
-      setStatus("Couldn’t load your chase list. Please try again shortly.");
+      setStatus(
+        queryErrorMessage !== null
+          ? `Couldn’t load your chase list: ${queryErrorMessage}`
+          : "Couldn’t load your chase list. Please try again shortly.",
+      );
     } finally {
       if (activeRequest === requestId) {
         loading = false;
