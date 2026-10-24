@@ -230,6 +230,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
   import { setupDeckImport } from "@/lib/deckImportUI";
   import {
     money,
@@ -1889,29 +1890,11 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     });
   });
 
-  let observedAuthUserId: string | null | undefined;
+  const accountChanged = createAccountChangeGuard();
 
   supabase.auth.onAuthStateChange((event, session) => {
-    if (
-      event !== "INITIAL_SESSION" &&
-      event !== "SIGNED_IN" &&
-      event !== "SIGNED_OUT"
-    ) {
-      return;
-    }
+    if (!accountChanged(event, session)) return;
 
-    const nextUserId = session?.user.id ?? null;
-
-    // The existing initial load handles the first session.
-    if (observedAuthUserId === undefined) {
-      observedAuthUserId = nextUserId;
-      return;
-    }
-
-    // Returning to the tab with the same account preserves current work.
-    if (nextUserId === observedAuthUserId) return;
-
-    observedAuthUserId = nextUserId;
     window.setTimeout(() => void load(), 0);
   });
 

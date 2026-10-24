@@ -103,6 +103,7 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
   import {
     money,
     parsePrice,
@@ -928,26 +929,11 @@ import Layout from "@/layouts/Layout.astro";
     }
   });
 
-  let observedAuthUserId: string | null | undefined;
+  const accountChanged = createAccountChangeGuard();
 
   supabase.auth.onAuthStateChange((event, session) => {
-    if (
-      event !== "INITIAL_SESSION" &&
-      event !== "SIGNED_IN" &&
-      event !== "SIGNED_OUT"
-    ) {
-      return;
-    }
+    if (!accountChanged(event, session)) return;
 
-    const nextUserId = session?.user.id ?? null;
-
-    if (observedAuthUserId === undefined) {
-      observedAuthUserId = nextUserId;
-      return;
-    }
-
-    if (nextUserId === observedAuthUserId) return;
-    observedAuthUserId = nextUserId;
     if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
       window.setTimeout(() => void loadDecks(), 0);
     }
