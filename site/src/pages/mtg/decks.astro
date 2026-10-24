@@ -103,6 +103,7 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
   import {
     money,
@@ -211,36 +212,32 @@ import Layout from "@/layouts/Layout.astro";
     try {
       if (!expectedUser) return;
 
-      const ids = new Set<string>();
-      let offset = 0;
-      const pageSize = 100;
+      const rows = await loadAllPages<{
+        id: string;
+        source_deck_card_id: string | null;
+      }>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("chase_cards")
+            .select("id, source_deck_card_id")
+            .eq("user_id", expectedUser)
+            .not("source_deck_card_id", "is", null)
+            .order("id", { ascending: true })
+            .range(from, to);
 
-      while (true) {
-        const { data, error } = await supabase
-          .from("chase_cards")
-          .select("id, source_deck_card_id")
-          .eq("user_id", expectedUser)
-          .not("source_deck_card_id", "is", null)
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
+          return { data, error };
+        },
+        { isCurrent },
+      );
 
-        if (!isCurrent()) return;
-        if (error) throw error;
+      if (rows === null || !isCurrent()) return;
 
-        const page = data ?? [];
-        for (const row of page) {
-          if (row.source_deck_card_id) {
-            ids.add(row.source_deck_card_id);
-          }
+      for (const row of rows) {
+        if (row.source_deck_card_id) {
+          chasedDeckCardIds.add(row.source_deck_card_id);
         }
-
-        if (page.length === 0) break;
-        offset += page.length;
       }
 
-      if (!isCurrent()) return;
-
-      for (const id of ids) chasedDeckCardIds.add(id);
       chaseStateReady = true;
       actionStatus.textContent = "";
       renderProxyFinder();
@@ -584,31 +581,25 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   async function loadPreview(deckId: string, expectedRequest: number) {
-    const cards: PreviewCard[] = [];
-    let offset = 0;
-
     try {
-      while (true) {
-        const { data, error } = await supabase
-          .from("deck_cards")
-          .select(
-            "id, name, set_name, collector_number, finish, card_role, quantity, is_proxy, image_url, color_identity, price_usd, manual_price_usd",
-          )
-          .eq("deck_id", deckId)
-          .in("card_role", ["main", "commander"])
-          .order("id", { ascending: true })
-          .range(offset, offset + 99);
+      const cards = await loadAllPages<PreviewCard>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("deck_cards")
+            .select(
+              "id, name, set_name, collector_number, finish, card_role, quantity, is_proxy, image_url, color_identity, price_usd, manual_price_usd",
+            )
+            .eq("deck_id", deckId)
+            .in("card_role", ["main", "commander"])
+            .order("id", { ascending: true })
+            .range(from, to);
 
-        if (expectedRequest !== requestId) return;
-        if (error) throw error;
+          return { data: data as PreviewCard[] | null, error };
+        },
+        { isCurrent: () => expectedRequest === requestId },
+      );
 
-        const page = (data ?? []) as PreviewCard[];
-        cards.push(...page);
-
-        if (!page.length) break;
-        offset += page.length;
-      }
-
+      if (cards === null || expectedRequest !== requestId) return;
       previews.set(deckId, { cards, unavailable: false });
     } catch {
       if (expectedRequest === requestId) {
@@ -822,29 +813,23 @@ import Layout from "@/layouts/Layout.astro";
 
       userId = session.user.id;
 
-      const decks: Deck[] = [];
-      const pageSize = 100;
-      let offset = 0;
+      const decks = await loadAllPages<Deck>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("decks")
+            .select("id, name, visibility, created_at")
+            .eq("user_id", userId!)
+            .order("name", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to);
 
-      while (true) {
-        const { data, error } = await supabase
-          .from("decks")
-          .select("id, name, visibility, created_at")
-          .eq("user_id", userId)
-          .order("name", { ascending: true })
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
+          return { data: data as Deck[] | null, error };
+        },
+        { isCurrent: () => currentRequest === requestId },
+      );
 
-        if (currentRequest !== requestId) return;
-        if (error) throw error;
+      if (decks === null || currentRequest !== requestId) return;
 
-        const page = (data ?? []) as Deck[];
-        decks.push(...page);
-
-        if (page.length === 0) break;
-
-        offset += page.length;
-      }
       for (const deck of decks) {
         await loadPreview(deck.id, currentRequest);
         if (currentRequest !== requestId) return;
