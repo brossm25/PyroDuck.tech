@@ -657,8 +657,26 @@
 
     window.addEventListener("chase-list-loaded", scheduleRefresh);
 
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "TOKEN_REFRESHED") return;
+    let observedAuthUserId: string | null | undefined;
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event !== "INITIAL_SESSION" &&
+        event !== "SIGNED_IN" &&
+        event !== "SIGNED_OUT"
+      ) {
+        return;
+      }
+
+      const nextUserId = session?.user.id ?? null;
+
+      if (observedAuthUserId === undefined) {
+        observedAuthUserId = nextUserId;
+        return;
+      }
+
+      if (nextUserId === observedAuthUserId) return;
+      observedAuthUserId = nextUserId;
 
       version++;
       viewerId = null;
@@ -666,10 +684,6 @@
       refresh.disabled = true;
       status.textContent = "Checking your sign-in…";
       scheduleRefresh();
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && !dialog.open) scheduleRefresh();
     });
 
     void loadMatches();

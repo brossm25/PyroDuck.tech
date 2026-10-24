@@ -381,7 +381,26 @@
     void refreshConnections();
   });
 
-  supabase.auth.onAuthStateChange((event) => {
+  let observedAuthUserId: string | null | undefined;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event !== "INITIAL_SESSION" &&
+      event !== "SIGNED_IN" &&
+      event !== "SIGNED_OUT"
+    ) {
+      return;
+    }
+
+    const nextUserId = session?.user.id ?? null;
+
+    if (observedAuthUserId === undefined) {
+      observedAuthUserId = nextUserId;
+      return;
+    }
+
+    if (nextUserId === observedAuthUserId) return;
+    observedAuthUserId = nextUserId;
     if (event === "SIGNED_OUT" || event === "SIGNED_IN") {
       resetSearch();
     }

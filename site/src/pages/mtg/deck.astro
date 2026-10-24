@@ -1,5 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import DeckImport from "@/components/mtg/DeckImport.astro";
 ---
 
 <Layout title="Commander Deck">
@@ -26,10 +27,12 @@ import Layout from "@/layouts/Layout.astro";
           </select>
         </label>
         <button type="submit">Save details</button>
+        <button id="delete-deck" type="button"> Delete entire deck </button>
       </form>
 
       <div id="deck-add" class="panel" hidden>
         <h2>Add a card</h2>
+        <DeckImport />
         <form id="deck-search">
           <label for="deck-query">Card name or Scryfall search</label>
           <div class="control-row">
@@ -227,6 +230,9 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { setupDeckImport } from "@/lib/deckImportUI";
+
+  let deckImporter: ReturnType<typeof setupDeckImport> | undefined;
 
   interface Deck {
     id: string;
@@ -1005,6 +1011,7 @@ import Layout from "@/layouts/Layout.astro";
         element.disabled = busy || !owner;
       });
     save.disabled = busy || !owner || !printings.length;
+    deckImporter?.sync();
   }
 
   async function requireOwner(expectedVersion: number) {
@@ -1467,6 +1474,7 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   async function load() {
+    deckImporter?.reset();
     if (missingPrices.open) missingPrices.close();
     missingPriceIds.clear();
     const current = ++version;
@@ -1542,6 +1550,53 @@ import Layout from "@/layouts/Layout.astro";
       if (current === version) controls();
     }
   }
+
+  get<HTMLButtonElement>("delete-deck").addEventListener("click", () => {
+    if (!owner || busy || !deck) return;
+
+    const targetId = deck.id;
+    const targetUser = deck.user_id;
+    const targetName = deck.name;
+    const expectedVersion = version;
+
+    const entered = window.prompt(
+      `Permanently delete “${targetName}”?` +
+        "\n\nThis deletes the entire deck, all its cards, and chase entries " +
+        "linked to those cards. Standalone chase entries remain." +
+        "\n\nThis cannot be undone." +
+        "\n\nType the deck name exactly to delete it:",
+    );
+
+    if (entered === null) return;
+
+    if (entered !== targetName) {
+      message("Deck name did not match. Nothing was deleted.");
+      return;
+    }
+
+    void mutate(async () => {
+      await requireOwner(expectedVersion);
+
+      if (deck?.id !== targetId || deck.user_id !== targetUser) {
+        throw new Error("The deck changed. Refresh and try again.");
+      }
+
+      const { data, error } = await supabase
+        .from("decks")
+        .delete()
+        .eq("id", targetId)
+        .eq("user_id", targetUser)
+        .select("id");
+
+      if (error) throw error;
+
+      if (!data?.some((item) => item.id === targetId)) {
+        throw new Error("Deck was not deleted. Refresh and try again.");
+      }
+
+      window.location.assign("/mtg/decks");
+    });
+  });
 
   settings.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1867,9 +1922,95 @@ import Layout from "@/layouts/Layout.astro";
     });
   });
 
-  supabase.auth.onAuthStateChange((event) => {
-    if (event === "SIGNED_IN" || event === "SIGNED_OUT")
-      window.setTimeout(() => void load(), 0);
+  let observedAuthUserId: string | null | undefined;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event !== "INITIAL_SESSION" &&
+      event !== "SIGNED_IN" &&
+      event !== "SIGNED_OUT"
+    ) {
+      return;
+    }
+
+    const nextUserId = session?.user.id ?? null;
+
+    // The existing initial load handles the first session.
+    if (observedAuthUserId === undefined) {
+      observedAuthUserId = nextUserId;
+      return;
+    }
+
+    // Returning to the tab with the same account preserves current work.
+    if (nextUserId === observedAuthUserId) return;
+
+    observedAuthUserId = nextUserId;
+    window.setTimeout(() => void load(), 0);
+  });
+
+  deckImporter = setupDeckImport({
+    canEdit: () => owner && !busy,
+
+    existing: () => savedEntries,
+
+    save: async (reviewed) => {
+      if (!owner || busy) {
+        throw new Error("Wait for the current action to finish.");
+      }
+
+      const expectedVersion = version;
+      busy = true;
+      controls();
+
+      try {
+        await requireOwner(expectedVersion);
+
+        const payload = reviewed.map((item) => ({
+          deck_id: deckId,
+          scryfall_id: item.card.id,
+          oracle_id: item.card.oracle_id ?? null,
+          name: item.card.name,
+          set_name: item.card.set_name,
+          collector_number: item.card.collector_number,
+          finish: item.finish,
+          quantity: item.quantity,
+          card_role: item.role,
+          is_proxy: item.isProxy,
+          image_url: imageFor(item.card) ?? null,
+          scryfall_uri: item.card.scryfall_uri,
+          ...cardData(item.card, item.finish),
+        }));
+
+        const { error } = await supabase.from("deck_cards").insert(payload);
+
+        if (error?.code === "23505") {
+          throw new Error(
+            "A selected printing, finish, and role already exists in this deck. " +
+              "Nothing from this import was added. Refresh and review duplicates.",
+          );
+        }
+
+        if (error) throw error;
+
+        if (expectedVersion !== version) {
+          throw new Error(
+            "Your sign-in changed. Reopen the deck to check the saved import.",
+          );
+        }
+
+        try {
+          await loadEntries();
+        } catch {
+          // The insert succeeded. Don’t encourage submitting it twice.
+          message(
+            "Cards were saved, but the deck could not refresh. Reload the page.",
+          );
+        }
+      } finally {
+        busy = false;
+        controls();
+      }
+    },
   });
   void load();
 </script>
@@ -2772,5 +2913,18 @@ import Layout from "@/layouts/Layout.astro";
   #missing-prices :global(:focus-visible) {
     outline: 2px solid var(--color-pyroduck-lime);
     outline-offset: 3px;
+  }
+
+  #deck-settings #delete-deck {
+    margin-top: 1rem;
+    margin-left: 1rem;
+    border: 1px solid #ff7070;
+    background: transparent;
+    color: #ff7070;
+  }
+
+  #deck-settings #delete-deck:hover:not(:disabled) {
+    background: #ff7070;
+    color: var(--color-pyroduck-void);
   }
 </style>

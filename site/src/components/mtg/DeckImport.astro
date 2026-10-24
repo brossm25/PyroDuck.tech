@@ -1,0 +1,227 @@
+<button id="open-deck-import" type="button">Import card list</button>
+
+<dialog id="deck-import-dialog" aria-labelledby="deck-import-heading">
+  <form method="dialog" class="import-close">
+    <button type="submit">Close ×</button>
+  </form>
+
+  <h2 id="deck-import-heading">Import cards into this deck</h2>
+
+  <p>
+    Paste card names or a ManaBox list, or choose a TXT/CSV file. Review
+    everything before saving.
+  </p>
+
+  <label for="deck-import-format">List format</label>
+  <select id="deck-import-format">
+    <option value="text">Text / ManaBox TXT</option>
+    <option value="csv">CSV with Name and Count columns</option>
+  </select>
+
+  <label for="deck-import-file">Choose a file</label>
+  <input
+    id="deck-import-file"
+    type="file"
+    accept=".txt,.csv,text/plain,text/csv"
+  />
+
+  <label for="deck-import-text">Card list</label>
+  <textarea
+    id="deck-import-text"
+    rows="8"
+    maxlength="1000000"
+    placeholder={"1 Sol Ring\n1 Toski, Bearer of Secrets (KHM) 319 *F*"}
+  ></textarea>
+
+  <div class="import-buttons">
+    <button id="deck-import-preview" type="button">Preview import</button>
+    <button id="deck-import-cancel" type="button" hidden>Cancel lookup</button>
+  </div>
+
+  <p>
+    Cards without a real/proxy status start as Real. You can change each card in
+    the preview before saving.
+  </p>
+
+  <p id="deck-import-status" role="status"></p>
+  <p id="deck-import-summary"></p>
+  <div id="deck-import-bulk" class="import-buttons" hidden>
+    <button id="deck-import-all-real" type="button">Mark all real</button>
+    <button id="deck-import-all-proxy" type="button">Mark all proxies</button>
+  </div>
+  <ul id="deck-import-results"></ul>
+
+  <button id="deck-import-save" type="button" disabled>
+    Add reviewed cards to deck
+  </button>
+</dialog>
+
+<style>
+  #deck-import-dialog {
+    box-sizing: border-box;
+    width: min(900px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  #deck-import-dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .import-close {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  #deck-import-dialog label {
+    display: block;
+    margin-top: 1rem;
+    font-weight: 600;
+  }
+
+  #deck-import-dialog input,
+  #deck-import-dialog select,
+  #deck-import-dialog textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 0.4rem;
+    padding: 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  #deck-import-dialog button,
+  #open-deck-import {
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #deck-import-dialog :disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #deck-import-dialog :focus-visible,
+  #open-deck-import:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .import-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  #deck-import-results {
+    padding: 0;
+    list-style: none;
+  }
+
+  #deck-import-results :global(li) {
+    padding-block: 1rem;
+    border-top: 1px solid var(--color-pyroduck-plasma);
+  }
+
+  #deck-import-results :global(img) {
+    float: left;
+    width: 70px;
+    height: auto;
+    margin: 0 1rem 0.75rem 0;
+    border-radius: 0.4rem;
+  }
+
+  #deck-import-results :global(li::after) {
+    display: block;
+    clear: both;
+    content: "";
+  }
+
+  #deck-import-results :global(.import-row-controls) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    clear: both;
+  }
+
+  #deck-import-results :global(input[type="checkbox"]) {
+    width: 20px;
+    min-height: 20px;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+
+  #deck-import-results :global(.import-warning) {
+    color: var(--color-pyroduck-lime);
+  }
+
+  #deck-import-results :global(label) {
+    display: block;
+    margin-top: 0.5rem;
+    font-weight: 600;
+  }
+
+  #deck-import-results :global(select),
+  #deck-import-results :global(input[type="number"]) {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 0.4rem;
+    padding: 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  #deck-import-results :global(button) {
+    align-self: end;
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #deck-import-results :global(:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #deck-import-results :global(:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  #deck-import-status {
+    white-space: pre-line;
+  }
+
+  #deck-import-bulk[hidden] {
+    display: none;
+  }
+</style>

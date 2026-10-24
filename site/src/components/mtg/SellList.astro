@@ -753,7 +753,7 @@
       caption.textContent = label;
 
       button.append(image, caption);
-      button.addEventListener("click", () => openPhoto(url, title));
+      button.addEventListener("click", () => openPhoto(image.src, title));
       return button;
     }
 
@@ -1894,22 +1894,86 @@
         photoDialog.close();
     });
 
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "TOKEN_REFRESHED") return;
+    let observedAuthUserId: string | null | undefined;
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event !== "INITIAL_SESSION" &&
+        event !== "SIGNED_IN" &&
+        event !== "SIGNED_OUT"
+      ) {
+        return;
+      }
+
+      const nextUserId = session?.user.id ?? null;
+
+      if (observedAuthUserId === undefined) {
+        observedAuthUserId = nextUserId;
+        return;
+      }
+
+      if (nextUserId === observedAuthUserId) return;
+      observedAuthUserId = nextUserId;
       window.setTimeout(() => void checkSignIn(), 0);
     });
 
-    // Refresh signed photo links when returning to this tab.
+    // Renew photo links without resetting lists, forms, or selections.
+    let renewingPhotos = false;
+
     document.addEventListener("visibilitychange", () => {
       if (
-        !document.hidden &&
-        userId &&
-        !busy &&
-        !root.querySelector("dialog[open]")
+        document.hidden ||
+        !userId ||
+        busy ||
+        renewingPhotos ||
+        root.querySelector("dialog[open]")
       ) {
-        void Promise.all([loadListings(), loadSalesHistory()]);
+        return;
       }
+
+      void renewPhotoLinks();
     });
+
+    async function renewPhotoLinks() {
+      const seller = userId;
+      const expectedVersion = listVersion;
+      const previousUrls = new Map(photoUrls);
+      const paths = [...previousUrls.keys()];
+
+      if (!seller || paths.length === 0) return;
+
+      renewingPhotos = true;
+
+      try {
+        const { data, error } = await bucket.createSignedUrls(paths, 3600);
+
+        if (error || userId !== seller || listVersion !== expectedVersion) {
+          return;
+        }
+
+        const replacements = new Map<string, string>();
+
+        for (const result of data ?? []) {
+          if (!result.path || !result.signedUrl) continue;
+
+          const previous = previousUrls.get(result.path);
+          photoUrls.set(result.path, result.signedUrl);
+
+          if (previous) replacements.set(previous, result.signedUrl);
+        }
+
+        groupsElement
+          .querySelectorAll<HTMLImageElement>(".listing-photo img")
+          .forEach((image) => {
+            const replacement = replacements.get(image.src);
+            if (replacement) image.src = replacement;
+          });
+      } catch {
+        // Keep the current photos; retry on the next tab return.
+      } finally {
+        renewingPhotos = false;
+      }
+    }
 
     void checkSignIn();
   }
