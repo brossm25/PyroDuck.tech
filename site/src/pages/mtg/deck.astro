@@ -231,6 +231,12 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 <script>
   import { supabase } from "@/lib/supabase";
   import { setupDeckImport } from "@/lib/deckImportUI";
+  import {
+    money,
+    effectivePrice,
+    quantityOf,
+    safeCardImage,
+  } from "@/lib/mtgFormat";
 
   let deckImporter: ReturnType<typeof setupDeckImport> | undefined;
 
@@ -445,28 +451,6 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     };
   }
 
-  const money = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
-
-  function effectivePrice(entry: Entry) {
-    function parse(value: number | string | null | undefined) {
-      if (value === null || value === undefined || value === "") return null;
-      const amount = Number(value);
-      return Number.isFinite(amount) && amount >= 0 ? amount : null;
-    }
-
-    const scryfall = parse(entry.price_usd);
-    const manual = parse(entry.manual_price_usd);
-
-    return {
-      amount: scryfall ?? manual,
-      manual: scryfall === null && manual !== null,
-    };
-  }
-
   function renderManaCost(parent: HTMLElement, cost: string | null) {
     parent.replaceChildren();
 
@@ -518,19 +502,6 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   const previewArt = get<HTMLDivElement>("card-preview-art");
   const previewFaces = get<HTMLDivElement>("card-preview-faces");
   let previewTrigger: HTMLButtonElement | null = null;
-
-  function safeCardImage(value: string | null): string | null {
-    if (!value) return null;
-
-    try {
-      const url = new URL(value);
-      return url.protocol === "https:" && url.hostname === "cards.scryfall.io"
-        ? url.href
-        : null;
-    } catch {
-      return null;
-    }
-  }
 
   function openCardPreview(entry: Entry, trigger: HTMLButtonElement) {
     const faces: { name: string; image_url: string }[] = [];
@@ -739,10 +710,6 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     }
 
     controls();
-  }
-
-  function quantityOf(entries: Entry[]) {
-    return entries.reduce((total, entry) => total + entry.quantity, 0);
   }
 
   function addStat(parent: HTMLElement, label: string, value: string) {

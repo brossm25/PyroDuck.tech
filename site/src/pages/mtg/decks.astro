@@ -103,6 +103,12 @@ import Layout from "@/layouts/Layout.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import {
+    money,
+    parsePrice,
+    quantityOf,
+    safeCardImage,
+  } from "@/lib/mtgFormat";
 
   interface Deck {
     id: string;
@@ -156,18 +162,6 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   const previews = new Map<string, DeckPreview>();
-
-  const money = (value: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
-
-  function parsePrice(value: number | string | null) {
-    if (value === null || value === undefined || value === "") return null;
-    const price = Number(value);
-    return Number.isFinite(price) && price >= 0 ? price : null;
-  }
 
   const collectionSummary = document.querySelector<HTMLElement>(
     "#collection-summary",
@@ -386,24 +380,16 @@ import Layout from "@/layouts/Layout.astro";
     for (const { deck, card } of matches) {
       const item = document.createElement("li");
 
-      if (card.image_url) {
-        try {
-          const url = new URL(card.image_url);
-          if (
-            url.protocol === "https:" &&
-            url.hostname === "cards.scryfall.io"
-          ) {
-            const image = document.createElement("img");
-            image.src = url.href;
-            image.alt = card.name;
-            image.width = 488;
-            image.height = 680;
-            image.loading = "lazy";
-            item.append(image);
-          }
-        } catch {
-          // Keep the card details when its image URL is invalid.
-        }
+      const imageUrl = safeCardImage(card.image_url);
+
+      if (imageUrl) {
+        const image = document.createElement("img");
+        image.src = imageUrl;
+        image.alt = card.name;
+        image.width = 488;
+        image.height = 680;
+        image.loading = "lazy";
+        item.append(image);
       }
 
       const information = document.createElement("div");
@@ -544,11 +530,8 @@ import Layout from "@/layouts/Layout.astro";
     const real = cards.filter((card) => !card.is_proxy);
     const proxies = cards.filter((card) => card.is_proxy);
 
-    const quantity = (entries: PreviewCard[]) =>
-      entries.reduce((total, card) => total + card.quantity, 0);
-
-    stat("Real cards", String(quantity(real)));
-    stat("Proxy cards", String(quantity(proxies)));
+    stat("Real cards", String(quantityOf(real)));
+    stat("Proxy cards", String(quantityOf(proxies)));
 
     function valueStat(label: string, entries: PreviewCard[]) {
       let total = 0;
@@ -658,27 +641,16 @@ import Layout from "@/layouts/Layout.astro";
       artwork.className = "deck-artwork";
 
       for (const commander of commanders) {
-        if (!commander.image_url) continue;
+        const imageUrl = safeCardImage(commander.image_url);
+        if (!imageUrl) continue;
 
-        try {
-          const url = new URL(commander.image_url);
-          if (
-            url.protocol !== "https:" ||
-            url.hostname !== "cards.scryfall.io"
-          ) {
-            continue;
-          }
-
-          const image = document.createElement("img");
-          image.src = url.href;
-          image.alt = commander.name;
-          image.width = 488;
-          image.height = 680;
-          image.loading = "lazy";
-          artwork.append(image);
-        } catch {
-          // Leave invalid image URLs out of the preview.
-        }
+        const image = document.createElement("img");
+        image.src = imageUrl;
+        image.alt = commander.name;
+        image.width = 488;
+        image.height = 680;
+        image.loading = "lazy";
+        artwork.append(image);
       }
 
       if (!artwork.children.length) {
