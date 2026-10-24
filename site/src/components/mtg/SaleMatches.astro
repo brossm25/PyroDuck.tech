@@ -43,6 +43,7 @@
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface SaleMatch {
@@ -428,50 +429,46 @@
         }
 
         const sellerView = viewerId;
+        const isCurrent = () => active === version && viewerId === sellerView;
+
+        const matchRows = await loadAllPages<SaleMatch>(
+          async (from, to) => {
+            const { data, error } = await supabase.rpc("get_my_sale_matches", {
+              p_limit: to - from + 1,
+              p_offset: from,
+            });
+
+            return { data: data as SaleMatch[] | null, error };
+          },
+          { isCurrent },
+        );
+
+        if (matchRows === null || !isCurrent()) return;
+
         const matches = new Map<string, SaleMatch>();
-
-        for (let offset = 0; ; offset += 100) {
-          const { data: page, error: matchError } = await supabase.rpc(
-            "get_my_sale_matches",
-            {
-              p_limit: 100,
-              p_offset: offset,
-            },
-          );
-
-          if (active !== version || viewerId !== sellerView) return;
-          if (matchError) throw matchError;
-
-          const batch = (page ?? []) as SaleMatch[];
-
-          batch.forEach((match) => {
-            matches.set(match.listing_id, match);
-          });
-
-          if (batch.length < 100) break;
+        for (const match of matchRows) {
+          matches.set(match.listing_id, match);
         }
 
+        const hiddenRows = await loadAllPages<HiddenMatch>(
+          async (from, to) => {
+            const { data, error } = await supabase
+              .from("hidden_sale_matches")
+              .select("listing_id, hidden_price_usd")
+              .eq("user_id", sellerView)
+              .order("listing_id", { ascending: true })
+              .range(from, to);
+
+            return { data: data as HiddenMatch[] | null, error };
+          },
+          { isCurrent },
+        );
+
+        if (hiddenRows === null || !isCurrent()) return;
+
         const savedHidden = new Map<string, HiddenMatch>();
-
-        for (let offset = 0; ; offset += 100) {
-          const { data: hiddenPage, error: hiddenError } = await supabase
-            .from("hidden_sale_matches")
-            .select("listing_id, hidden_price_usd")
-            .eq("user_id", sellerView)
-            .order("listing_id", { ascending: true })
-            .range(offset, offset + 99);
-
-          if (active !== version || viewerId !== sellerView) return;
-
-          if (hiddenError) throw hiddenError;
-
-          const batch = (hiddenPage ?? []) as HiddenMatch[];
-
-          batch.forEach((entry) => {
-            savedHidden.set(entry.listing_id, entry);
-          });
-
-          if (batch.length < 100) break;
+        for (const entry of hiddenRows) {
+          savedHidden.set(entry.listing_id, entry);
         }
 
         hiddenMatches = savedHidden;
