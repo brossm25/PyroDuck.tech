@@ -326,6 +326,7 @@
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   type ColorGroup =
     | "white"
@@ -1894,26 +1895,11 @@
         photoDialog.close();
     });
 
-    let observedAuthUserId: string | null | undefined;
+    const accountChanged = createAccountChangeGuard();
 
     supabase.auth.onAuthStateChange((event, session) => {
-      if (
-        event !== "INITIAL_SESSION" &&
-        event !== "SIGNED_IN" &&
-        event !== "SIGNED_OUT"
-      ) {
-        return;
-      }
+      if (!accountChanged(event, session)) return;
 
-      const nextUserId = session?.user.id ?? null;
-
-      if (observedAuthUserId === undefined) {
-        observedAuthUserId = nextUserId;
-        return;
-      }
-
-      if (nextUserId === observedAuthUserId) return;
-      observedAuthUserId = nextUserId;
       window.setTimeout(() => void checkSignIn(), 0);
     });
 
