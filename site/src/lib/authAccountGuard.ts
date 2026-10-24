@@ -2,7 +2,7 @@ interface AccountSession {
   user: { id: string };
 }
 
-export function createAccountChangeGuard() {
+export function createAccountChangeGuard(notifyInitial = false) {
   let observedUserId: string | null | undefined;
 
   return (event: string, session: AccountSession | null): boolean => {
@@ -16,10 +16,10 @@ export function createAccountChangeGuard() {
 
     const nextUserId = session?.user.id ?? null;
 
-    // The page's initial load handles the first session.
+    // Some components use the first auth event for their initial load.
     if (observedUserId === undefined) {
       observedUserId = nextUserId;
-      return false;
+      return notifyInitial;
     }
 
     if (nextUserId === observedUserId) return false;

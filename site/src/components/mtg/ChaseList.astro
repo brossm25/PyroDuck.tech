@@ -69,6 +69,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface ChaseCard {
     id: string;
@@ -920,23 +921,13 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     void refreshPrices(true);
   });
 
-  let observedUserId: string | null | undefined;
+  const accountChanged = createAccountChangeGuard(true);
   let authLoadTimer: number | undefined;
 
   supabase.auth.onAuthStateChange((event, session) => {
-    if (
-      event !== "INITIAL_SESSION" &&
-      event !== "SIGNED_IN" &&
-      event !== "SIGNED_OUT"
-    ) {
-      return;
-    }
+    if (!accountChanged(event, session)) return;
 
     const nextUserId = session?.user.id ?? null;
-
-    // Repeated sign-in events for the same user need no reload.
-    if (nextUserId === observedUserId) return;
-    observedUserId = nextUserId;
 
     // Immediately invalidate requests and clear the previous user's cards.
     requestId++;
