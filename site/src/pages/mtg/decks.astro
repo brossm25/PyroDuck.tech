@@ -830,10 +830,24 @@ import Layout from "@/layouts/Layout.astro";
 
       if (decks === null || currentRequest !== requestId) return;
 
-      for (const deck of decks) {
-        await loadPreview(deck.id, currentRequest);
-        if (currentRequest !== requestId) return;
+      let nextDeck = 0;
+
+      async function loadNextPreviews() {
+        while (currentRequest === requestId) {
+          const deck = decks![nextDeck++];
+          if (!deck) return;
+
+          await loadPreview(deck.id, currentRequest);
+        }
       }
+
+      await Promise.all(
+        Array.from({ length: Math.min(3, decks.length) }, () =>
+          loadNextPreviews(),
+        ),
+      );
+
+      if (currentRequest !== requestId) return;
       renderDecks(decks);
       collectionDecks = decks;
       renderCollectionSummary(decks);
