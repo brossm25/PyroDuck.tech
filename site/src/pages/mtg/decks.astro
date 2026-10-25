@@ -575,7 +575,7 @@ import Layout from "@/layouts/Layout.astro";
     valueStat("Real-card value", real);
     valueStat("Proxy replacement value", proxies);
 
-    collectionStatus.textContent = `${quantity(cards)} total card copies across your decks.`;
+    collectionStatus.textContent = `${quantityOf(cards)} total card copies across your decks.`;
 
     collectionSummary.hidden = false;
   }
