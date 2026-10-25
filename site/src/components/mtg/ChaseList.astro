@@ -71,6 +71,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
   import { supabase } from "@/lib/supabase";
   import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
+  import { safeCardImage, safeScryfallHref } from "@/lib/mtgFormat";
 
   interface ChaseCard {
     id: string;
@@ -135,7 +136,8 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
   let previewOpener: HTMLButtonElement | undefined;
 
   function openPreview(card: ChaseCard, opener: HTMLButtonElement) {
-    if (!preview || !previewImage || !card.image_url) return;
+    const imageUrl = safeCardImage(card.image_url);
+    if (!preview || !previewImage || !imageUrl) return;
     previewCardId = card.id;
     previewOpener = opener;
     if (previewTitle) previewTitle.textContent = card.name;
@@ -144,7 +146,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     if (previewError) previewError.hidden = true;
     previewImage.hidden = false;
     previewImage.alt = card.name;
-    previewImage.src = card.image_url;
+    previewImage.src = imageUrl;
     if (!preview.open) preview.showModal();
   }
 
@@ -466,9 +468,11 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
       const item = document.createElement("li");
       item.className = "chase-list-card";
 
-      if (card.image_url) {
+      const imageUrl = safeCardImage(card.image_url);
+
+      if (imageUrl) {
         const image = document.createElement("img");
-        image.src = card.image_url;
+        image.src = imageUrl;
         image.alt = card.name;
         image.loading = "lazy";
         image.width = 488;
@@ -492,9 +496,11 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
       const title = document.createElement("p");
       title.className = "chase-list-title";
 
-      if (card.scryfall_uri) {
+      const scryfallHref = safeScryfallHref(card.scryfall_uri);
+
+      if (scryfallHref) {
         const link = document.createElement("a");
-        link.href = card.scryfall_uri;
+        link.href = scryfallHref;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = `${card.quantity ?? 1} × ${card.name} ↗`;

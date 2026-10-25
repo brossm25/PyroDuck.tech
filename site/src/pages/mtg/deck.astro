@@ -698,13 +698,15 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     for (const entry of entries) {
       const item = document.createElement("li");
       item.className = "entry";
-      if (entry.image_url) {
+      const imageUrl = safeCardImage(entry.image_url);
+
+      if (imageUrl) {
         const art = document.createElement("div");
         art.className = "card-art";
         art.dataset.finish = entry.finish;
 
         const img = document.createElement("img");
-        img.src = entry.image_url;
+        img.src = imageUrl;
         img.alt = entry.name;
         img.loading = "lazy";
         img.width = 488;
