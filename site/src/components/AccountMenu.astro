@@ -456,6 +456,12 @@
         return;
       }
 
+      if (action === "signup" && password.length < 12) {
+        setFormStatus("Use at least 12 characters for a new password.");
+        form.querySelector<HTMLInputElement>('[name="password"]')?.focus();
+        return;
+      }
+
       setBusy(true);
       setMemberStatus("");
       setFormStatus(action === "signup" ? "Creating account…" : "Logging in…");
