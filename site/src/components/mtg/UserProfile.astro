@@ -84,6 +84,7 @@
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
 
   interface Profile {
     id: string;
@@ -108,7 +109,6 @@
 
   let profile: Profile | null = null;
   let activeUserId: string | null = null;
-  let observedUserId: string | null = null;
   let loading = false;
   let saving = false;
   let requestId = 0;
@@ -200,8 +200,6 @@
         setStatus("Sign in using the header to edit your profile.");
         return;
       }
-
-      observedUserId = session.user.id;
 
       const { data, error } = await supabase
         .from("profiles")
@@ -385,22 +383,21 @@
     }
   });
 
+  const accountChanged = createAccountChangeGuard(true);
+  let authLoadTimer: number | undefined;
+
   supabase.auth.onAuthStateChange((event, session) => {
-    const nextUserId = session?.user.id ?? null;
+    if (!accountChanged(event, session)) return;
 
-    if (event === "SIGNED_OUT" || nextUserId !== observedUserId) {
-      observedUserId = nextUserId;
-      resetProfile();
+    window.clearTimeout(authLoadTimer);
+    resetProfile();
 
-      if (nextUserId) {
-        window.setTimeout(() => {
-          void loadProfile();
-        }, 0);
-      }
+    if (session?.user.id) {
+      authLoadTimer = window.setTimeout(() => {
+        void loadProfile();
+      }, 0);
     }
   });
-
-  void loadProfile();
 </script>
 
 <style>
