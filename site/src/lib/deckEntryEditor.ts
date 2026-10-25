@@ -17,11 +17,19 @@ interface EditorOptions {
   mutate: (action: () => Promise<void>) => Promise<void>;
   loadEntries: () => Promise<void>;
   message: (text: string) => void;
+  changePrinting?: () => void;
 }
 
 export function createDeckEntryEditor(
   entry: EditableEntry,
-  { deckId, isBusy, mutate, loadEntries, message }: EditorOptions,
+  {
+    deckId,
+    isBusy,
+    mutate,
+    loadEntries,
+    message,
+    changePrinting,
+  }: EditorOptions,
 ): HTMLDetailsElement {
   const actions = document.createElement("div");
   actions.className = "entry-actions";
@@ -222,7 +230,22 @@ export function createDeckEntryEditor(
     }
   }
 
-  actions.append(count, update, proxyButton, destination, move, remove);
+  actions.append(count, update, proxyButton, destination, move);
+
+  if (changePrinting) {
+    const printingButton = document.createElement("button");
+    printingButton.type = "button";
+    printingButton.textContent = "Change printing / art";
+    printingButton.setAttribute("aria-haspopup", "dialog");
+
+    printingButton.addEventListener("click", () => {
+      if (!isBusy()) changePrinting();
+    });
+
+    actions.append(printingButton);
+  }
+
+  actions.append(remove);
 
   const editor = document.createElement("details");
   editor.className = "entry-editor";

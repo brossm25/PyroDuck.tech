@@ -356,6 +356,8 @@ import Layout from "@/layouts/Layout.astro";
       )
       .sort(
         (a, b) =>
+          Number(chasedDeckCardIds.has(a.card.id)) -
+            Number(chasedDeckCardIds.has(b.card.id)) ||
           a.card.name.localeCompare(b.card.name) ||
           a.deck.name.localeCompare(b.deck.name),
       );

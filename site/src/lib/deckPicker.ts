@@ -2,11 +2,20 @@ import { loadDeckPrintings } from "@/lib/deckPrintings";
 import { createDeckPrintingPreview } from "@/lib/deckPrintingPreview";
 
 interface PickerCard {
+  id: string;
   name: string;
   set_name: string;
   collector_number: string;
   prints_search_uri: string;
   finishes: string[];
+}
+
+interface ExistingPrinting {
+  printingId: string;
+  finish: string;
+  quantity: number;
+  role: string;
+  isProxy: boolean;
 }
 
 interface PickerOptions<T extends PickerCard> {
@@ -43,6 +52,7 @@ export function createDeckPicker<T extends PickerCard>({
   errorText,
 }: PickerOptions<T>) {
   let printings: T[] = [];
+  let editing = false;
   let controller: AbortController | undefined;
 
   const selectedCard = () => printings[Number(printing.value)];
@@ -61,17 +71,23 @@ export function createDeckPicker<T extends PickerCard>({
   dialog.addEventListener("close", () => controller?.abort());
 
   function sync() {
-    save.disabled = !canEdit() || !printings.length;
+    save.disabled =
+      !canEdit() || !selectedCard()?.finishes.includes(finish.value);
+
+    quantity.disabled = editing || !canEdit();
+    role.disabled = editing || !canEdit();
+    proxy.disabled = editing || !canEdit();
   }
 
   function reset() {
+    editing = false;
     printings = [];
     controller?.abort();
     dialog.close();
     sync();
   }
 
-  async function choose(card: T) {
+  async function choose(card: T, existing?: ExistingPrinting) {
     if (!canEdit()) return;
 
     const current = getVersion();
@@ -83,10 +99,21 @@ export function createDeckPicker<T extends PickerCard>({
     printing.replaceChildren();
     finish.replaceChildren();
     image.hidden = true;
-    quantity.value = "1";
-    proxy.checked = false;
+    editing = existing !== undefined;
+    quantity.value = String(existing?.quantity ?? 1);
+    proxy.checked = existing?.isProxy ?? false;
     art.hidden = true;
-    role.value = "main";
+    role.value = existing?.role ?? "main";
+
+    save.textContent = editing ? "Save printing" : "Add to deck";
+    const heading = dialog.querySelector<HTMLElement>("#picker-heading");
+    if (heading) {
+      heading.textContent = editing
+        ? `Change printing · ${card.name}`
+        : "Choose printing";
+    }
+
+    sync();
     save.disabled = true;
     status.textContent = `Loading versions of ${card.name}…`;
     dialog.showModal();
@@ -113,7 +140,25 @@ export function createDeckPicker<T extends PickerCard>({
         ? "Choose printing, finish, and how to use the card."
         : "No paper printings found.";
 
+      if (existing) {
+        const index = all.findIndex((item) => item.id === existing.printingId);
+
+        if (index >= 0) printing.value = String(index);
+      }
+
       previewPrinting();
+
+      if (existing && selectedCard()?.finishes.includes(existing.finish)) {
+        finish.value = existing.finish;
+        finish.dispatchEvent(new Event("change"));
+      }
+
+      sync();
+
+      if (existing && all.length) {
+        status.textContent =
+          "Choose a printing and finish. Quantity, section, and proxy status stay unchanged.";
+      }
     } catch (error) {
       if (!request.signal.aborted && current === getVersion()) {
         status.textContent = errorText(error);
