@@ -107,6 +107,23 @@ export function parseCardList(
       const finish = finishValues[field("foil").toLowerCase()];
       const proxy = field("proxy").toLowerCase();
 
+      const roleValue = field("role").toLowerCase();
+      let role: ImportRole = "main";
+
+      if (
+        roleValue === "main" ||
+        roleValue === "commander" ||
+        roleValue === "sideboard" ||
+        roleValue === "maybeboard"
+      ) {
+        role = roleValue;
+      } else if (roleValue !== "") {
+        issues.push(
+          `Row ${line}: role must be main, commander, sideboard, or maybeboard.`,
+        );
+        return;
+      }
+
       if (!finish || !["", "true", "false"].includes(proxy)) {
         issues.push(`Row ${line}: unrecognized finish or proxy status.`);
         return;
@@ -119,7 +136,7 @@ export function parseCardList(
           set: field("edition") || null,
           collector: field("collector number") || null,
           finish,
-          role: "main",
+          role,
           isProxy: proxy ? proxy === "true" : null,
         },
         line,
