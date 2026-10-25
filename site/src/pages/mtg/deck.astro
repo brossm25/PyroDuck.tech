@@ -178,6 +178,30 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
     <div id="card-preview-art" class="card-art">
       <img id="card-preview-image" alt="" width="488" height="680" />
+      <button
+        id="card-preview-flip"
+        type="button"
+        aria-label="Show back face"
+        aria-controls="card-preview-image"
+        title="Show back face"
+        hidden
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="26"
+          height="26"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M20 7v5h-5M4 17v-5h5"></path>
+          <path d="M6.1 7a7 7 0 0 1 11.6-1L20 12"></path>
+          <path d="M17.9 17a7 7 0 0 1-11.6 1L4 12"></path>
+        </svg>
+      </button>
     </div>
 
     <div
@@ -353,7 +377,11 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   const previewImage = get<HTMLImageElement>("card-preview-image");
   const previewArt = get<HTMLDivElement>("card-preview-art");
   const previewFaces = get<HTMLDivElement>("card-preview-faces");
+  const previewFlip = get<HTMLButtonElement>("card-preview-flip");
+  let flipPreview: (() => void) | null = null;
   let previewTrigger: HTMLButtonElement | null = null;
+
+  previewFlip.addEventListener("click", () => flipPreview?.());
 
   function openCardPreview(entry: Entry, trigger: HTMLButtonElement) {
     const faces: { name: string; image_url: string }[] = [];
@@ -373,9 +401,16 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     previewTrigger = trigger;
     previewArt.dataset.finish = entry.finish;
     previewFaces.replaceChildren();
+    previewFlip.hidden = faces.length !== 2;
+    flipPreview = null;
+    let currentFace = 0;
 
     function showFace(index: number) {
+      currentFace = index;
       const face = faces[index];
+      const flipLabel = index === 0 ? "Show back face" : "Show front face";
+      previewFlip.setAttribute("aria-label", flipLabel);
+      previewFlip.title = flipLabel;
       previewImage.src = face.image_url;
       previewImage.alt = face.name;
       get("card-preview-heading").textContent = face.name;
@@ -385,7 +420,9 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       });
     }
 
-    if (faces.length > 1) {
+    if (faces.length === 2) {
+      flipPreview = () => showFace(currentFace === 0 ? 1 : 0);
+    } else if (faces.length > 2) {
       faces.forEach((face, index) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -416,6 +453,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   });
 
   cardPreview.addEventListener("close", () => {
+    flipPreview = null;
+    previewFlip.hidden = true;
     previewImage.removeAttribute("src");
     if (previewTrigger?.isConnected) previewTrigger.focus();
     previewTrigger = null;
@@ -2241,5 +2280,33 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   #deck-settings #delete-deck:hover:not(:disabled) {
     background: #ff7070;
     color: var(--color-pyroduck-void);
+  }
+
+  #card-preview #card-preview-flip {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 50%;
+    background: rgb(0 0 0 / 88%);
+    color: var(--color-brand-text);
+    box-shadow: 0 2px 12px rgb(0 0 0 / 55%);
+  }
+
+  #card-preview #card-preview-flip:hover {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+  }
+
+  #card-preview #card-preview-flip[hidden] {
+    display: none !important;
   }
 </style>
