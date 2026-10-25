@@ -93,6 +93,14 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
               aria-controls="panel-mana"
               tabindex="-1">Mana</button
             >
+            <button
+              id="tab-checks"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-checks"
+              tabindex="-1">Deck checks</button
+            >
           </div>
 
           <div
@@ -117,6 +125,19 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
             tabindex="0"
             hidden
           >
+          </div>
+
+          <div
+            id="panel-checks"
+            role="tabpanel"
+            aria-labelledby="tab-checks"
+            tabindex="0"
+            hidden
+          >
+            <p class="muted">
+              Deck checks provide guidance. You can still add cards and save
+              your deck when warnings are present.
+            </p>
           </div>
 
           <button id="refresh-deck-data" type="button" hidden>
@@ -254,6 +275,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
 <script>
   import { supabase } from "@/lib/supabase";
+  import { checkDeck } from "@/lib/deckChecks";
   import { loadAllPages } from "@/lib/paginate";
   import { renderManaCost } from "@/lib/renderManaCost";
   import { renderDeckOverview } from "@/lib/deckOverview";
@@ -700,6 +722,65 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     }
 
     renderOverview(entries);
+    const checks = checkDeck(entries);
+    const checksTab = get("tab-checks");
+    checksTab.replaceChildren(document.createTextNode("Deck checks"));
+
+    if (checks.warnings.size) {
+      const badge = document.createElement("span");
+      badge.className = "deck-check-badge";
+      badge.setAttribute("aria-hidden", "true");
+      badge.textContent = `! ${checks.warnings.size}`;
+      checksTab.append(badge);
+    }
+
+    checksTab.setAttribute(
+      "aria-label",
+      checks.warnings.size
+        ? `Deck checks: ${checks.warnings.size} card entries need attention`
+        : "Deck checks",
+    );
+    const checksPanel = get("panel-checks");
+    checksPanel.replaceChildren();
+
+    const checksHeading = document.createElement("h3");
+    checksHeading.textContent = "Commander deck checks";
+    checksPanel.append(checksHeading);
+
+    for (const text of checks.notes) {
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = text;
+      checksPanel.append(note);
+    }
+
+    if (checks.warnings.size) {
+      const warningHeading = document.createElement("h3");
+      warningHeading.textContent = `${checks.warnings.size} card entries need attention`;
+      checksPanel.append(warningHeading);
+
+      const warningList = document.createElement("ul");
+      warningList.className = "deck-check-list";
+
+      for (const entry of entries) {
+        const messages = checks.warnings.get(entry.id);
+        if (!messages) continue;
+
+        const warning = document.createElement("li");
+        warning.textContent =
+          `${entry.name} (${entry.set_name} #${entry.collector_number}, ` +
+          `${entry.finish}): ${messages.join(" ")}`;
+        warningList.append(warning);
+      }
+
+      checksPanel.append(warningList);
+    } else {
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent =
+        "No card warnings found by the checks currently available.";
+      checksPanel.append(note);
+    }
     for (const entry of entries) {
       const item = document.createElement("li");
       item.className = "entry";
@@ -746,6 +827,21 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       renderManaCost(manaCost, entry.mana_cost);
 
       information.append(heading, meta, manaCost);
+      for (const text of checks.warnings.get(entry.id) ?? []) {
+        const warning = document.createElement("p");
+        warning.className = "deck-card-warning";
+
+        const symbol = document.createElement("span");
+        symbol.className = "deck-warning-symbol";
+        symbol.setAttribute("aria-hidden", "true");
+        symbol.textContent = "!";
+
+        const label = document.createElement("span");
+        label.textContent = `Deck warning: ${text}`;
+
+        warning.append(symbol, label);
+        information.append(warning);
+      }
       item.append(information);
       const price = effectivePrice(entry);
       const priceLabel = document.createElement("p");
@@ -1239,19 +1335,41 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         })
         .select("id")
         .single();
-      if (error?.code === "23505")
-        throw new Error(
-          "That printing and finish is already in this deck in the selected role. Change its quantity below.",
+      if (error?.code === "23505") {
+        const { data: updatedId, error: quantityError } = await supabase.rpc(
+          "add_deck_card_copies",
+          {
+            p_deck_id: deckId,
+            p_scryfall_id: card.id,
+            p_finish: selectedFinish,
+            p_card_role: selectedRole,
+            p_quantity: amount,
+            p_is_proxy: selectedProxy,
+          },
         );
-      if (error) throw error;
-      if (!data) throw new Error("Card was not added.");
+
+        if (quantityError) throw quantityError;
+        if (!updatedId)
+          throw new Error("Couldn’t confirm the quantity update.");
+      } else {
+        if (error) throw error;
+        if (!data) throw new Error("Card was not added.");
+      }
       picker.close();
       searchController?.abort();
       search.reset();
       get("deck-results").replaceChildren();
       get("deck-search-status").textContent = "";
-      await loadEntries();
-      message(`Added ${card.name}.`);
+      try {
+        await loadEntries();
+        message(
+          `Added ${amount} ${amount === 1 ? "copy" : "copies"} of ${card.name}.`,
+        );
+      } catch {
+        message(
+          "Copies saved, but the deck could not refresh. Reload the page before adding again.",
+        );
+      }
     });
   });
 
@@ -2356,5 +2474,57 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
   #card-preview #card-preview-flip[hidden] {
     display: none !important;
+  }
+
+  :global(.deck-card-warning) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-top: 0.65rem;
+    color: #ffd166;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  :global(.deck-warning-symbol) {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 1.4rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    border: 1px solid currentColor;
+    border-radius: 0.35rem;
+    font-weight: 800;
+  }
+
+  #panel-checks :global(h3) {
+    margin-block: 1rem 0.65rem;
+    font-weight: 700;
+  }
+
+  #panel-checks :global(p) {
+    margin-block: 0.65rem;
+  }
+
+  #panel-checks :global(.deck-check-list) {
+    padding-left: 1.25rem;
+    list-style: disc;
+    color: #ffd166;
+  }
+
+  #panel-checks :global(li) {
+    margin-block: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  #tab-checks :global(.deck-check-badge) {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.35rem;
+    background: #ffd166;
+    color: #10071b;
+    font-weight: 800;
+    line-height: 1.3;
   }
 </style>
