@@ -257,6 +257,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   import { loadAllPages } from "@/lib/paginate";
   import { renderManaCost } from "@/lib/renderManaCost";
   import { renderDeckOverview } from "@/lib/deckOverview";
+  import { createDeckCardPreview } from "@/lib/deckCardPreview";
   import { createDeckEntryEditor } from "@/lib/deckEntryEditor";
   import { sectionNames, sectionFor } from "@/lib/deckSections";
   import { createDeckPicker } from "@/lib/deckPicker";
@@ -373,91 +374,13 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     });
   }
 
-  const cardPreview = get<HTMLDialogElement>("card-preview");
-  const previewImage = get<HTMLImageElement>("card-preview-image");
-  const previewArt = get<HTMLDivElement>("card-preview-art");
-  const previewFaces = get<HTMLDivElement>("card-preview-faces");
-  const previewFlip = get<HTMLButtonElement>("card-preview-flip");
-  let flipPreview: (() => void) | null = null;
-  let previewTrigger: HTMLButtonElement | null = null;
-
-  previewFlip.addEventListener("click", () => flipPreview?.());
-
-  function openCardPreview(entry: Entry, trigger: HTMLButtonElement) {
-    const faces: { name: string; image_url: string }[] = [];
-
-    for (const face of entry.card_faces ?? []) {
-      const url = safeCardImage(face.image_url);
-      if (url) faces.push({ name: face.name, image_url: url });
-    }
-
-    if (!faces.length) {
-      const url = safeCardImage(entry.image_url);
-      if (url) faces.push({ name: entry.name, image_url: url });
-    }
-
-    if (!faces.length) return;
-
-    previewTrigger = trigger;
-    previewArt.dataset.finish = entry.finish;
-    previewFaces.replaceChildren();
-    previewFlip.hidden = faces.length !== 2;
-    flipPreview = null;
-    let currentFace = 0;
-
-    function showFace(index: number) {
-      currentFace = index;
-      const face = faces[index];
-      const flipLabel = index === 0 ? "Show back face" : "Show front face";
-      previewFlip.setAttribute("aria-label", flipLabel);
-      previewFlip.title = flipLabel;
-      previewImage.src = face.image_url;
-      previewImage.alt = face.name;
-      get("card-preview-heading").textContent = face.name;
-
-      Array.from(previewFaces.children).forEach((button, position) => {
-        button.setAttribute("aria-pressed", String(position === index));
-      });
-    }
-
-    if (faces.length === 2) {
-      flipPreview = () => showFace(currentFace === 0 ? 1 : 0);
-    } else if (faces.length > 2) {
-      faces.forEach((face, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent =
-          index === 0 ? "Front" : index === 1 ? "Back" : `Face ${index + 1}`;
-        button.title = face.name;
-        button.addEventListener("click", () => showFace(index));
-        previewFaces.append(button);
-      });
-    }
-
-    showFace(0);
-    cardPreview.showModal();
-  }
-
-  cardPreview.addEventListener("click", (event) => {
-    if (event.target !== cardPreview) return;
-
-    const bounds = cardPreview.getBoundingClientRect();
-    if (
-      event.clientX < bounds.left ||
-      event.clientX > bounds.right ||
-      event.clientY < bounds.top ||
-      event.clientY > bounds.bottom
-    ) {
-      cardPreview.close();
-    }
-  });
-
-  cardPreview.addEventListener("close", () => {
-    flipPreview = null;
-    previewFlip.hidden = true;
-    previewImage.removeAttribute("src");
-    if (previewTrigger?.isConnected) previewTrigger.focus();
-    previewTrigger = null;
+  const openCardPreview = createDeckCardPreview({
+    dialog: get<HTMLDialogElement>("card-preview"),
+    image: get<HTMLImageElement>("card-preview-image"),
+    art: get<HTMLDivElement>("card-preview-art"),
+    faces: get<HTMLDivElement>("card-preview-faces"),
+    flip: get<HTMLButtonElement>("card-preview-flip"),
+    heading: get("card-preview-heading"),
   });
 
   const missingPrices = get<HTMLDialogElement>("missing-prices");
