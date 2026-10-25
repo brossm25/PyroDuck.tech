@@ -232,11 +232,10 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   import { supabase } from "@/lib/supabase";
   import { loadAllPages } from "@/lib/paginate";
   import { renderManaCost } from "@/lib/renderManaCost";
-  import { loadDeckPrintings } from "@/lib/deckPrintings";
   import { renderDeckOverview } from "@/lib/deckOverview";
   import { createDeckEntryEditor } from "@/lib/deckEntryEditor";
   import { sectionNames, sectionFor } from "@/lib/deckSections";
-  import { createDeckPrintingPreview } from "@/lib/deckPrintingPreview";
+  import { createDeckPicker } from "@/lib/deckPicker";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
   import { setupDeckImport } from "@/lib/deckImportUI";
   import {
@@ -338,7 +337,6 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   let owner = false;
   let busy = false;
   let version = 0;
-  let printings: Card[] = [];
   let savedEntries: Entry[] = [];
 
   const cardViewButtons = Array.from(
@@ -688,7 +686,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       overviewTabs[next].focus();
     });
   });
-  let pickerController: AbortController | undefined;
+
   let searchController: AbortController | undefined;
   const imageFor = (card: Card) =>
     card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal;
@@ -720,7 +718,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       .forEach((element) => {
         element.disabled = busy || !owner;
       });
-    save.disabled = busy || !owner || !printings.length;
+    deckPicker.sync();
     deckImporter?.sync();
   }
 
@@ -970,10 +968,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     const current = ++version;
     owner = false;
     deck = null;
-    printings = [];
-    pickerController?.abort();
+    deckPicker.reset();
     searchController?.abort();
-    picker.close();
     settings.hidden = true;
     get("deck-add").hidden = true;
     get("deck-results").replaceChildren();
@@ -1112,59 +1108,22 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     });
   });
 
-  const previewPrinting = createDeckPrintingPreview<Card>({
+  const deckPicker = createDeckPicker<Card>({
+    dialog: picker,
     printing,
     finish,
+    role,
+    quantity,
+    proxy,
     image,
     art: pickerArt,
     save,
-    selectedCard: () => printings[Number(printing.value)],
+    status: get("picker-status"),
+    canEdit: () => owner && !busy,
+    getVersion: () => version,
     imageFor,
-    canSave: () => owner && !busy,
+    errorText,
   });
-  picker.addEventListener("close", () => pickerController?.abort());
-
-  async function choose(card: Card) {
-    if (busy || !owner) return;
-    const current = version;
-    pickerController?.abort();
-    const controller = new AbortController();
-    pickerController = controller;
-    printings = [];
-    printing.replaceChildren();
-    finish.replaceChildren();
-    image.hidden = true;
-    quantity.value = "1";
-    proxy.checked = false;
-    pickerArt.hidden = true;
-    role.value = "main";
-    save.disabled = true;
-    get("picker-status").textContent = `Loading versions of ${card.name}…`;
-    picker.showModal();
-    try {
-      const all = await loadDeckPrintings<Card>(
-        card.prints_search_uri,
-        controller.signal,
-      );
-      if (current !== version || controller.signal.aborted) return;
-      printings = all;
-      all.forEach((item, index) =>
-        printing.add(
-          new Option(
-            `${item.set_name} — #${item.collector_number}`,
-            String(index),
-          ),
-        ),
-      );
-      get("picker-status").textContent = all.length
-        ? "Choose printing, finish, and how to use the card."
-        : "No paper printings found.";
-      previewPrinting();
-    } catch (error) {
-      if (!controller.signal.aborted && current === version)
-        get("picker-status").textContent = errorText(error);
-    }
-  }
 
   search.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1216,7 +1175,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         button.type = "button";
         button.textContent = "Choose printing";
         button.setAttribute("aria-haspopup", "dialog");
-        button.addEventListener("click", () => void choose(card));
+        button.addEventListener("click", () => void deckPicker.choose(card));
         li.append(name, button);
         results.append(li);
       }
@@ -1231,7 +1190,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
   get<HTMLFormElement>("picker-add").addEventListener("submit", (event) => {
     event.preventDefault();
-    const card = printings[Number(printing.value)];
+    const card = deckPicker.selectedCard();
     const amount = Number(quantity.value);
     if (
       !card ||
