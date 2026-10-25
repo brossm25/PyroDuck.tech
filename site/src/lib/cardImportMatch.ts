@@ -1,36 +1,9 @@
 import type { ImportFinish, ImportRow } from "./cardImport";
+import type { DeckCard } from "./deckCardData";
 
-export interface ImportCard {
-  id: string;
-  oracle_id?: string;
-  name: string;
+export interface ImportCard extends DeckCard {
   set: string;
-  set_name: string;
-  collector_number: string;
-  scryfall_uri: string;
-  prints_search_uri: string;
   games: string[];
-  finishes: string[];
-  oracle_text?: string;
-  type_line?: string;
-  mana_cost?: string;
-  cmc?: number;
-  colors?: string[];
-  color_identity?: string[];
-  prices?: {
-    usd?: string | null;
-    usd_foil?: string | null;
-    usd_etched?: string | null;
-  };
-  image_uris?: { normal: string };
-  card_faces?: {
-    name?: string;
-    oracle_text?: string;
-    type_line?: string;
-    mana_cost?: string;
-    colors?: string[];
-    image_uris?: { normal: string };
-  }[];
 }
 
 export interface ImportMatch {
