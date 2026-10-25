@@ -32,14 +32,14 @@ const socialImageURL = new URL(site.socialImage, site.url);
     <!-- Link-sharing previews -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={site.name} />
-    <meta property="og:title" content={`${site.name} | ${site.tagline}`} />
+    <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalURL.href} />
     <meta property="og:image" content={socialImageURL.href} />
     <meta property="og:image:alt" content={site.socialImageAlt} />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={`${site.name} | ${site.tagline}`} />
+    <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={socialImageURL.href} />
     <meta name="twitter:image:alt" content={site.socialImageAlt} />
@@ -49,9 +49,11 @@ const socialImageURL = new URL(site.socialImage, site.url);
     id="top"
     class="antialiased flex flex-col min-h-screen bg-pyroduck-void text-brand-text"
   >
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <Header />
 
-    <main class="flex-grow">
+    <main id="main-content" tabindex="-1" class="flex-grow">
       <slot />
     </main>
 
@@ -59,3 +61,24 @@ const socialImageURL = new URL(site.socialImage, site.url);
     <SecretDuck />
   </body>
 </html>
+
+<style>
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 1000;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-void);
+    font-weight: 700;
+    transform: translateY(calc(-100% - 1rem));
+  }
+
+  .skip-link:focus {
+    transform: translateY(0);
+    outline: 2px solid var(--color-pyroduck-plasma);
+    outline-offset: 3px;
+  }
+</style>
