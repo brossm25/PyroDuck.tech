@@ -1,0 +1,407 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="32-Deck Challenge">
+  <section class="px-6 py-12 sm:py-16">
+    <div class="mx-auto max-w-5xl">
+      <a class="challenge-back" href="/mtg/decks">← Your decks</a>
+
+      <h1 class="mt-8 text-4xl font-bold">Your 32-deck challenge</h1>
+      <p class="mt-4 text-brand-muted">
+        Every color combination. Every matching deck. One main choice for each.
+      </p>
+
+      <p id="challenge-status" class="mt-5" role="status">
+        Loading your decks…
+      </p>
+
+      <section
+        id="commander-challenge"
+        class="commander-challenge"
+        aria-label="Challenge progress and deck selections"
+        hidden
+      >
+      </section>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
+  import {
+    renderCommanderChallenge,
+    resetCommanderChallenge,
+  } from "@/lib/commanderChallenge";
+
+  interface Deck {
+    id: string;
+    name: string;
+  }
+
+  interface Commander {
+    id: string;
+    name: string;
+    image_url: string | null;
+    card_role: string;
+    color_identity: string[] | null;
+  }
+
+  interface Preview {
+    unavailable: boolean;
+    cards: Commander[];
+  }
+
+  const challenge = document.querySelector<HTMLElement>(
+    "#commander-challenge",
+  )!;
+  const status = document.querySelector<HTMLElement>("#challenge-status")!;
+
+  let version = 0;
+
+  async function load() {
+    const current = ++version;
+    const isCurrent = () => current === version;
+
+    resetCommanderChallenge(challenge);
+    status.textContent = "Loading your decks…";
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (!isCurrent()) return;
+      if (sessionError) throw sessionError;
+
+      if (!session) {
+        status.textContent =
+          "Sign in using the account menu to see your challenge.";
+        return;
+      }
+
+      const userId = session.user.id;
+
+      const decks = await loadAllPages<Deck>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("decks")
+            .select("id, name")
+            .eq("user_id", userId)
+            .order("name")
+            .order("id")
+            .range(from, to);
+
+          return { data: data as Deck[] | null, error };
+        },
+        { isCurrent },
+      );
+
+      if (decks === null || !isCurrent()) return;
+
+      const previews = new Map<string, Preview>();
+      let next = 0;
+
+      async function worker() {
+        while (isCurrent()) {
+          const deck = decks![next++];
+          if (!deck) return;
+
+          try {
+            const cards = await loadAllPages<Commander>(
+              async (from, to) => {
+                const { data, error } = await supabase
+                  .from("deck_cards")
+                  .select("id, name, image_url, card_role, color_identity")
+                  .eq("deck_id", deck.id)
+                  .eq("card_role", "commander")
+                  .order("id")
+                  .range(from, to);
+
+                return { data: data as Commander[] | null, error };
+              },
+              { isCurrent },
+            );
+
+            if (cards === null || !isCurrent()) return;
+            previews.set(deck.id, { cards, unavailable: false });
+          } catch {
+            if (!isCurrent()) return;
+            previews.set(deck.id, { cards: [], unavailable: true });
+          }
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(3, decks.length) }, () => worker()),
+      );
+
+      if (!isCurrent()) return;
+
+      await renderCommanderChallenge(
+        challenge,
+        decks,
+        previews,
+        userId,
+        isCurrent,
+      );
+
+      if (isCurrent()) status.textContent = "";
+    } catch {
+      if (isCurrent()) {
+        status.textContent =
+          "Couldn’t load your decks. Refresh the page to try again.";
+      }
+    }
+  }
+
+  const accountChanged = createAccountChangeGuard();
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (!accountChanged(event, session)) return;
+
+    version++;
+    resetCommanderChallenge(challenge);
+    status.textContent = "Updating your challenge…";
+    window.setTimeout(() => void load(), 0);
+  });
+
+  void load();
+</script>
+
+<style>
+  .challenge-back {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 700;
+  }
+
+  .commander-challenge {
+    margin-top: 2rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .commander-challenge :global(h2) {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .commander-challenge :global(p) {
+    margin-block: 0.75rem;
+  }
+
+  .commander-challenge :global(.challenge-grid) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 0.75rem;
+    margin-top: 1rem;
+    align-items: start;
+  }
+
+  .commander-challenge :global(.challenge-slot) {
+    padding: 0.85rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    overflow-wrap: anywhere;
+  }
+
+  .commander-challenge :global(.challenge-slot[data-selected="true"]) {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .commander-challenge :global(summary) {
+    min-height: 44px;
+    color: var(--color-pyroduck-plasma);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .commander-challenge :global(summary:hover),
+  .commander-challenge :global(details[open] > summary) {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .commander-challenge :global(label) {
+    display: block;
+    margin-top: 0.75rem;
+    font-weight: 600;
+  }
+
+  .commander-challenge :global(select),
+  .commander-challenge :global(button) {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 0.5rem;
+    padding: 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .commander-challenge :global(button) {
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .commander-challenge :global(a) {
+    color: var(--color-pyroduck-lime);
+    text-decoration: underline;
+  }
+
+  .commander-challenge :global(li) {
+    margin-block: 0.5rem;
+  }
+
+  .commander-challenge :global(:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .commander-challenge :global(:disabled) {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .commander-challenge :global(.challenge-slot) {
+    padding: 0;
+    overflow: hidden;
+    border-radius: 0.85rem;
+  }
+
+  .commander-challenge :global(.challenge-slot > summary) {
+    display: block;
+    list-style: none;
+  }
+
+  .commander-challenge
+    :global(.challenge-slot > summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  .commander-challenge :global(.challenge-artwork) {
+    display: flex;
+    height: 180px;
+    overflow: hidden;
+    background: var(--color-pyroduck-void);
+  }
+
+  .commander-challenge :global(.challenge-artwork img) {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 25%;
+  }
+
+  .commander-challenge :global(.challenge-art-placeholder) {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    padding: 1rem;
+    background: linear-gradient(
+      135deg,
+      var(--color-pyroduck-royal),
+      var(--color-pyroduck-afterdark)
+    );
+    color: var(--color-brand-muted);
+    text-align: center;
+  }
+
+  .commander-challenge :global(.challenge-caption) {
+    display: grid;
+    gap: 0.4rem;
+    padding: 1rem;
+  }
+
+  .commander-challenge :global(.challenge-identity) {
+    color: var(--color-pyroduck-plasma);
+    font-size: 1rem;
+  }
+
+  .commander-challenge :global(.challenge-main-name) {
+    color: var(--color-brand-text);
+  }
+
+  .commander-challenge :global(.challenge-match-count) {
+    color: var(--color-brand-muted);
+    font-size: 0.85rem;
+    font-weight: 400;
+  }
+
+  .commander-challenge :global(.challenge-expand-hint) {
+    margin-top: 0.35rem;
+    color: var(--color-pyroduck-plasma);
+    font-size: 0.8rem;
+  }
+
+  .commander-challenge
+    :global(.challenge-slot[data-selected="true"] .challenge-identity),
+  .commander-challenge :global(summary:hover .challenge-expand-hint),
+  .commander-challenge :global(details[open] .challenge-expand-hint) {
+    color: var(--color-pyroduck-lime);
+  }
+
+  .commander-challenge :global(.challenge-slot > ul),
+  .commander-challenge :global(.challenge-slot > label),
+  .commander-challenge :global(.challenge-slot > p) {
+    margin: 0.85rem 1rem;
+  }
+
+  .commander-challenge :global(.challenge-slot > button) {
+    width: calc(100% - 2rem);
+    margin: 0 1rem 1rem;
+  }
+
+  .commander-challenge {
+    container-type: inline-size;
+    container-name: challenge;
+  }
+
+  @container challenge (min-width: 804px) {
+    .commander-challenge :global(.challenge-grid) {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .commander-challenge :global(.challenge-slot) {
+      grid-column: span 2;
+    }
+
+    .commander-challenge :global(.challenge-slot:nth-last-child(2)) {
+      grid-column: 2 / span 2;
+    }
+
+    .commander-challenge :global(.challenge-slot:last-child) {
+      grid-column: 4 / span 2;
+    }
+  }
+
+  .commander-challenge :global(.challenge-identity) {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .commander-challenge :global(.challenge-mana) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .commander-challenge :global(.challenge-mana .mana-symbol) {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+</style>

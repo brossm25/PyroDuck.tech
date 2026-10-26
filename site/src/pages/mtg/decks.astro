@@ -42,7 +42,13 @@ import Layout from "@/layouts/Layout.astro";
         </div>
       </form>
 
-      <p class="deck-status mt-5 text-brand-muted" role="status"></p>
+      <div class="deck-toolbar">
+        <a class="challenge-link" href="/mtg/challenge">
+          32-Deck Challenge →
+        </a>
+
+        <p class="deck-status deck-count-badge" role="status"></p>
+      </div>
 
       <ul class="deck-list mt-8"></ul>
 
@@ -853,6 +859,7 @@ import Layout from "@/layouts/Layout.astro";
       renderDecks(decks);
       collectionDecks = decks;
       renderCollectionSummary(decks);
+
       setStatus(
         decks.length
           ? `${decks.length} ${decks.length === 1 ? "deck" : "decks"}.`
@@ -1389,5 +1396,50 @@ import Layout from "@/layouts/Layout.astro";
   #proxy-finder-results :global(button.proxy-chase-button:disabled) {
     opacity: 0.6;
     cursor: default;
+  }
+
+  .challenge-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-void);
+    font-weight: 700;
+  }
+
+  .challenge-link:hover {
+    background: var(--color-pyroduck-lime);
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  .challenge-link:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .deck-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .deck-toolbar .challenge-link {
+    margin-top: 0;
+  }
+
+  .deck-count-badge {
+    margin: 0;
+    margin-left: auto;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    font-weight: 700;
   }
 </style>
