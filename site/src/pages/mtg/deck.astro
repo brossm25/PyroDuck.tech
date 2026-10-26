@@ -325,6 +325,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     mana_value: number | null;
     colors: string[] | null;
     color_identity: string[] | null;
+    commander_legality: "legal" | "not_legal" | "restricted" | "banned" | null;
+    legality_checked_at: string | null;
     price_usd: number | string | null;
     price_checked_at: string | null;
     manual_price_usd: number | string | null;
@@ -940,7 +942,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         const { data, error } = await supabase
           .from("deck_cards")
           .select(
-            "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at, oracle_text, card_faces",
+            "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at, oracle_text, card_faces, commander_legality, legality_checked_at",
           )
           .eq("deck_id", deckId!)
           .order("name", { ascending: true })

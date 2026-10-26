@@ -13,6 +13,9 @@ export interface DeckCard {
   cmc?: number;
   colors?: string[];
   color_identity?: string[];
+  legalities?: {
+    commander?: "legal" | "not_legal" | "restricted" | "banned";
+  };
   prices?: {
     usd?: string | null;
     usd_foil?: string | null;
@@ -65,6 +68,10 @@ export function cardData(card: DeckCard, selectedFinish: string) {
         : null,
     colors: card.colors ?? card.card_faces?.[0]?.colors ?? [],
     color_identity: card.color_identity ?? [],
+    commander_legality: card.legalities?.commander ?? null,
+    legality_checked_at: card.legalities?.commander
+      ? new Date().toISOString()
+      : null,
     price_usd: Number.isFinite(price) && price >= 0 ? price : null,
     price_checked_at: new Date().toISOString(),
   };

@@ -6,6 +6,8 @@ interface CheckEntry {
   type_line: string | null;
   oracle_text: string | null;
   color_identity: string[] | null;
+  commander_legality: "legal" | "not_legal" | "restricted" | "banned" | null;
+  legality_checked_at: string | null;
 }
 
 export interface DeckCheckResult {
@@ -358,6 +360,26 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
       missingData++;
     }
 
+    if (entry.commander_legality === "banned") {
+      warn(
+        entry,
+        "Banned in Commander according to the saved Scryfall data. " +
+          "Your pod may allow it by agreement.",
+      );
+    } else if (entry.commander_legality === "not_legal") {
+      warn(
+        entry,
+        "Not legal in Commander according to the saved Scryfall data. " +
+          "Your pod may allow it by agreement.",
+      );
+    } else if (entry.commander_legality === "restricted") {
+      warn(
+        entry,
+        "Unexpected restricted status for Commander. Refresh card data " +
+          "and review this card’s legality.",
+      );
+    }
+
     if (!canCheckColors) continue;
 
     const requiredColors = new Set(entry.color_identity ?? []);
@@ -421,10 +443,22 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
     );
   }
 
+  const missingLegality = active.filter(
+    (entry) => !entry.commander_legality || !entry.legality_checked_at,
+  ).length;
+
+  if (missingLegality) {
+    notes.push(
+      `${missingLegality} active card entries need a legality check. ` +
+        "Refresh card data to check their Commander status.",
+    );
+  }
+
   notes.push(
     "Checks cover deck size, color restrictions, copy limits, basic " +
-      "commander eligibility, and recognized commander pairings. " +
-      "Some special cases need review. Banned cards are not checked yet.",
+      "commander eligibility, recognized pairings, and saved Commander legality.",
+    "Legality uses saved Scryfall data and can change. Refresh card data " +
+      "to update it. Some special cases still need review.",
     "Warnings do not prevent saving. Your pod can agree to house rules.",
   );
 
