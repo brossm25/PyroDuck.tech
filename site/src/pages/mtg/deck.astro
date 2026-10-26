@@ -86,6 +86,14 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
               tabindex="-1">Value</button
             >
             <button
+              id="tab-power"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-power"
+              tabindex="-1">Power indicators</button
+            >
+            <button
               id="tab-mana"
               type="button"
               role="tab"
@@ -138,6 +146,15 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
               Deck checks provide guidance. You can still add cards and save
               your deck when warnings are present.
             </p>
+          </div>
+
+          <div
+            id="panel-power"
+            role="tabpanel"
+            aria-labelledby="tab-power"
+            tabindex="0"
+            hidden
+          >
           </div>
 
           <button id="refresh-deck-data" type="button" hidden>
@@ -325,6 +342,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     mana_value: number | null;
     colors: string[] | null;
     color_identity: string[] | null;
+    game_changer: boolean | null;
+    power_checked_at: string | null;
     commander_legality: "legal" | "not_legal" | "restricted" | "banned" | null;
     legality_checked_at: string | null;
     price_usd: number | string | null;
@@ -562,6 +581,77 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     parent.append(note);
   }
 
+  function renderPowerIndicators(entries: Entry[]) {
+    const panel = get("panel-power");
+    panel.replaceChildren();
+
+    const heading = document.createElement("h3");
+    heading.textContent = "Power indicators";
+    panel.append(heading);
+
+    addNote(
+      panel,
+      "Includes commanders and main-deck cards, including proxies. " +
+        "Sideboard and maybeboard are excluded. These indicators do not assign a bracket.",
+    );
+
+    const active = entries.filter(
+      (entry) => entry.card_role === "main" || entry.card_role === "commander",
+    );
+
+    const unknown = active.filter(
+      (entry) =>
+        typeof entry.game_changer !== "boolean" || !entry.power_checked_at,
+    );
+
+    const matches = active.filter((entry) => entry.game_changer === true);
+    const copies = quantityOf(matches);
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent =
+      `Game Changers: ${copies}` + (unknown.length ? " · incomplete" : "");
+    details.append(summary);
+
+    if (matches.length) {
+      const list = document.createElement("ul");
+
+      for (const entry of matches) {
+        const item = document.createElement("li");
+        item.textContent =
+          `${entry.quantity} × ${entry.name} — ` +
+          `${entry.set_name} #${entry.collector_number} · ${entry.finish}` +
+          (entry.is_proxy ? " · Proxy" : "");
+        list.append(item);
+      }
+
+      details.append(list);
+    } else {
+      addNote(
+        details,
+        unknown.length
+          ? "No Game Changers found among checked cards."
+          : "No Game Changers found.",
+      );
+    }
+
+    panel.append(details);
+
+    if (unknown.length) {
+      addNote(
+        panel,
+        `${unknown.length} active card entries need Game Changer data. ` +
+          "Refresh card data to complete this count.",
+      );
+    }
+
+    addNote(
+      panel,
+      "Counts copies, so duplicate printings count together. " +
+        "Game Changer status uses saved Scryfall data; refresh to update it.",
+    );
+  }
+
   function renderOverview(entries: Entry[]) {
     renderDeckOverview(entries, {
       overview: get("panel-overview"),
@@ -572,6 +662,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       openMissingPrices,
     });
 
+    renderPowerIndicators(entries);
     get("refresh-deck-data").hidden = !owner;
   }
 
@@ -942,7 +1033,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         const { data, error } = await supabase
           .from("deck_cards")
           .select(
-            "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at, oracle_text, card_faces, commander_legality, legality_checked_at",
+            "id, scryfall_id, name, set_name, collector_number, finish, quantity, card_role, image_url, is_proxy, type_line, mana_cost, mana_value, colors, color_identity, price_usd, price_checked_at, manual_price_usd, manual_price_updated_at, oracle_text, card_faces, commander_legality, legality_checked_at, game_changer, power_checked_at",
           )
           .eq("deck_id", deckId!)
           .order("name", { ascending: true })
