@@ -599,56 +599,132 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       (entry) => entry.card_role === "main" || entry.card_role === "commander",
     );
 
-    const unknown = active.filter(
+    function category(
+      label: string,
+      cards: Entry[],
+      incomplete: boolean,
+      explanation: string,
+    ) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent =
+        `${label}: ${quantityOf(cards)}` + (incomplete ? " · incomplete" : "");
+      details.append(summary);
+
+      addNote(details, explanation);
+
+      if (cards.length) {
+        const list = document.createElement("ul");
+
+        for (const entry of cards) {
+          const item = document.createElement("li");
+          item.textContent =
+            `${entry.quantity} × ${entry.name} — ` +
+            `${entry.set_name} #${entry.collector_number} · ${entry.finish}` +
+            (entry.is_proxy ? " · Proxy" : "");
+          list.append(item);
+        }
+
+        details.append(list);
+      } else {
+        addNote(
+          details,
+          incomplete
+            ? "No matches found among checked cards."
+            : "No matches found.",
+        );
+      }
+
+      panel.append(details);
+    }
+
+    const unknownGameChangers = active.filter(
       (entry) =>
         typeof entry.game_changer !== "boolean" || !entry.power_checked_at,
     );
 
-    const matches = active.filter((entry) => entry.game_changer === true);
-    const copies = quantityOf(matches);
+    category(
+      "Game Changers",
+      active.filter((entry) => entry.game_changer === true),
+      unknownGameChangers.length > 0,
+      "Uses the saved Scryfall Game Changer flag.",
+    );
 
-    const details = document.createElement("details");
-    const summary = document.createElement("summary");
-    summary.textContent =
-      `Game Changers: ${copies}` + (unknown.length ? " · incomplete" : "");
-    details.append(summary);
-
-    if (matches.length) {
-      const list = document.createElement("ul");
-
-      for (const entry of matches) {
-        const item = document.createElement("li");
-        item.textContent =
-          `${entry.quantity} × ${entry.name} — ` +
-          `${entry.set_name} #${entry.collector_number} · ${entry.finish}` +
-          (entry.is_proxy ? " · Proxy" : "");
-        list.append(item);
-      }
-
-      details.append(list);
-    } else {
+    if (unknownGameChangers.length) {
       addNote(
-        details,
-        unknown.length
-          ? "No Game Changers found among checked cards."
-          : "No Game Changers found.",
+        panel,
+        `${unknownGameChangers.length} active card entries need Game Changer data. ` +
+          "Refresh card data to complete this count.",
       );
     }
 
-    panel.append(details);
+    const missingRules = active.filter(
+      (entry) => entry.oracle_text === null,
+    ).length;
 
-    if (unknown.length) {
+    function rulesText(entry: Entry) {
+      return (entry.oracle_text ?? "")
+        .replace(/\([^)]*\)/g, "")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+    }
+
+    const tutors = active.filter((entry) => {
+      const searches = rulesText(entry).matchAll(
+        /\bsearch your library for ([^.]+)/g,
+      );
+
+      for (const [, searchedFor] of searches) {
+        const landOnly =
+          /^(?:(?:a|an|up to (?:one|two|three|\d+)) )?(?:basic )?land cards?\b/.test(
+            searchedFor,
+          ) ||
+          /^(?:(?:a|an|up to (?:one|two|three|\d+)) )?(?:(?:plains|island|swamp|mountain|forest)(?:,?\s+(?:and\/or|or|and)\s+|\s*,\s*)?)+ cards?\b/.test(
+            searchedFor,
+          );
+
+        if (!landOnly) return true;
+      }
+
+      return false;
+    });
+
+    const universalTutors = tutors.filter((entry) =>
+      /\bsearch your library for (?:a card|up to one card)(?=\s*[,.;]|$)/.test(
+        rulesText(entry),
+      ),
+    );
+
+    category(
+      "Tutors · text estimate",
+      tutors,
+      missingRules > 0,
+      "Estimates tutors from explicit library-search wording, excluding " +
+        "common land-only searches. Keyword abilities and unusual wording " +
+        "may be missed. Review the listed cards.",
+    );
+
+    category(
+      "Universal Tutors · text estimate",
+      universalTutors,
+      missingRules > 0,
+      "A subset of Tutors that explicitly searches for “a card” without " +
+        "a type restriction in that phrase. Costs, conditions, and " +
+        "where the card goes still vary. Review the listed cards.",
+    );
+
+    if (missingRules) {
       addNote(
         panel,
-        `${unknown.length} active card entries need Game Changer data. ` +
-          "Refresh card data to complete this count.",
+        `${missingRules} active card entries are missing rules text. ` +
+          "Refresh card data to improve the tutor estimates.",
       );
     }
 
     addNote(
       panel,
-      "Counts copies, so duplicate printings count together. " +
-        "Game Changer status uses saved Scryfall data; refresh to update it.",
+      "Counts copies, so duplicate printings count together. Categories " +
+        "can overlap. Refresh card data to update saved information.",
     );
   }
 
