@@ -706,6 +706,19 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         .toLowerCase();
     }
 
+    const extraTurns = active.filter((entry) =>
+      /\bextra turns?\b/.test(rulesText(entry)),
+    );
+
+    category(
+      "Extra Turns · text estimate",
+      extraTurns,
+      missingRules > 0,
+      "Matches cards whose rules text mentions extra turns. " +
+        "Includes conditional effects and effects that grant turns to other players. " +
+        "Cards that prevent extra turns may also appear; review the listed cards.",
+    );
+
     const tutors = active.filter((entry) => {
       const searches = rulesText(entry).matchAll(
         /\bsearch your library for ([^.]+)/g,
