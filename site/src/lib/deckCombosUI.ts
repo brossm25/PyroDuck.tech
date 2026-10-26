@@ -83,6 +83,21 @@ export function renderDeckCombos(
           sizeFilter.value !== "all" &&
           details.dataset.comboSize !== sizeFilter.value;
       });
+
+    root
+      .querySelectorAll<HTMLDetailsElement>("[data-combo-group]")
+      .forEach((group) => {
+        const summary = group.querySelector("summary");
+        const list = group.querySelector<HTMLElement>("[data-combo-list]");
+        if (!summary || !list) return;
+
+        const rows = Array.from(list.children) as HTMLDetailsElement[];
+        const visible = rows.filter((row) => !row.hidden).length;
+
+        summary.textContent =
+          `${group.dataset.comboGroup}: ${visible} shown / ` +
+          `${rows.length} loaded`;
+      });
   }
 
   sizeFilter.addEventListener("change", applySizeFilter);
@@ -241,8 +256,26 @@ export function renderDeckCombos(
 
   const deckResults = group("Deck combo results · not checked");
   const deckSummary = deckResults.querySelector("summary")!;
-  const deckList = document.createElement("div");
-  deckResults.append(deckList);
+  function resultGroup(label: string, open = false) {
+    const details = document.createElement("details");
+    details.dataset.comboGroup = label;
+    details.open = open;
+
+    const summary = document.createElement("summary");
+    summary.textContent = `${label}: 0 loaded`;
+
+    const list = document.createElement("div");
+    list.dataset.comboList = "true";
+
+    details.append(summary, list);
+    deckResults.append(details);
+
+    return list;
+  }
+
+  const includedList = resultGroup("All listed cards in deck", true);
+  const missingList = resultGroup("Missing pieces / commander changes");
+  const reviewList = resultGroup("Additional card requirements to review");
 
   let deckNext: string | null = null;
   let deckCount = 0;
@@ -280,14 +313,24 @@ export function renderDeckCombos(
         ],
       ] as const;
 
-      for (const [label, combos] of categories) {
+      for (const [index, [label, combos]] of categories.entries()) {
         for (const combo of combos) {
           if (deckSeen.has(combo.id)) continue;
           deckSeen.add(combo.id);
-          showCombo(deckList, combo, label);
+
+          const destination =
+            index !== 0
+              ? missingList
+              : combo.requires.length
+                ? reviewList
+                : includedList;
+
+          showCombo(destination, combo, label);
           deckCount++;
         }
       }
+
+      applySizeFilter();
 
       deckNext = page.next;
       moreDeck.hidden = !deckNext;
