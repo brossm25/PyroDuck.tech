@@ -81,6 +81,51 @@ function copyLimit(entry: CheckEntry): number | null {
   return 1;
 }
 
+function commanderEligibility(
+  entry: CheckEntry,
+): "eligible" | "ineligible" | "unknown" {
+  if (entry.type_line === null || entry.oracle_text === null) {
+    return "unknown";
+  }
+
+  // Combined face data needs a separate check so a back face does not
+  // accidentally qualify a card whose front face cannot be a commander.
+  if (entry.type_line.includes(" // ")) return "unknown";
+
+  const [types, subtypes = ""] = entry.type_line.split("—");
+  const legendary = /\bLegendary\b/.test(types);
+
+  if (
+    entry.oracle_text
+      .toLowerCase()
+      .includes(`${entry.name.toLowerCase()} can be your commander.`)
+  ) {
+    return "eligible";
+  }
+
+  if (
+    legendary &&
+    (/\bCreature\b/.test(types) || /\bVehicle\b/.test(subtypes))
+  ) {
+    return "eligible";
+  }
+
+  // Spacecraft need power/toughness information that we do not yet save.
+  if (legendary && /\bSpacecraft\b/.test(subtypes)) return "unknown";
+
+  // A legendary Background can qualify through Choose a Background.
+  // Check that when validating the commander pair.
+  if (
+    legendary &&
+    /\bEnchantment\b/.test(types) &&
+    /\bBackground\b/.test(subtypes)
+  ) {
+    return "unknown";
+  }
+
+  return "ineligible";
+}
+
 export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
   const active = entries.filter(
     (entry) => entry.card_role === "main" || entry.card_role === "commander",
@@ -103,6 +148,28 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
           count < 100 ? `${100 - count} more needed.` : `${count - 100} over.`
         }`,
   );
+
+  for (const commander of commanders) {
+    if (commander.quantity !== 1) {
+      warn(commander, "Each selected commander should have quantity 1.");
+    }
+
+    const eligibility = commanderEligibility(commander);
+
+    if (eligibility === "ineligible") {
+      warn(
+        commander,
+        "This card does not meet the normal commander eligibility rules. " +
+          "Your pod may allow it by agreement.",
+      );
+    } else if (eligibility === "unknown") {
+      warn(
+        commander,
+        "Commander eligibility needs review. This card has missing data " +
+          "or a special case this checker does not yet verify.",
+      );
+    }
+  }
 
   const canCheckColors =
     commanders.length > 0 &&
@@ -199,8 +266,9 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
   }
 
   notes.push(
-    "Checks cover deck size, color restrictions, and copy limits. " +
-      "Commander eligibility, pairings, and banned cards are not checked yet.",
+    "Checks cover deck size, color restrictions, copy limits, and basic " +
+      "commander eligibility. Special commander cases, pairings, and banned " +
+      "cards are not fully checked yet.",
     "Warnings do not prevent saving. Your pod can agree to house rules.",
   );
 
