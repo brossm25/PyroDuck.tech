@@ -2802,4 +2802,49 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     outline-offset: 4px;
     border-radius: 0.25rem;
   }
+
+  #panel-power :global(label) {
+    display: block;
+    margin-block: 0.75rem;
+    font-weight: 700;
+  }
+
+  #panel-power :global(select) {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 0.5rem;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  #panel-power :global(select:hover) {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  #panel-power :global(select:focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  #panel-power :global(select:disabled) {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  #panel-power :global(button) {
+    margin-block: 0.5rem;
+  }
+
+  #panel-power :global(h3) {
+    margin-block: 1rem 0.5rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
 </style>
