@@ -126,6 +126,123 @@ function commanderEligibility(
   return "ineligible";
 }
 
+function commanderPair(
+  first: CheckEntry,
+  second: CheckEntry,
+): "valid" | "invalid" | "unknown" {
+  const cards = [first, second];
+
+  if (
+    cards.some(
+      (card) =>
+        card.type_line === null ||
+        card.oracle_text === null ||
+        card.type_line.includes(" // "),
+    )
+  ) {
+    return "unknown";
+  }
+
+  function types(card: CheckEntry) {
+    const [main, subtypes = ""] = card.type_line!.split("—");
+    return { main, subtypes: subtypes.trim() };
+  }
+
+  function abilities(card: CheckEntry) {
+    return card
+      .oracle_text!.replace(/\([^)]*\)/g, "")
+      .split("\n")
+      .map((line) => line.trim().toLowerCase().replace(/[’]/g, "'"))
+      .filter(Boolean);
+  }
+
+  const a = types(first);
+  const b = types(second);
+  const firstAbilities = abilities(first);
+  const secondAbilities = abilities(second);
+
+  if (!/\bLegendary\b/.test(a.main) || !/\bLegendary\b/.test(b.main)) {
+    return "invalid";
+  }
+
+  const has = (lines: string[], ability: string) => lines.includes(ability);
+
+  if (has(firstAbilities, "partner") && has(secondAbilities, "partner")) {
+    return "valid";
+  }
+
+  const partnerGroup = (lines: string[]) =>
+    lines
+      .filter((line) => /^partner\s*—\s*/.test(line))
+      .map((line) => line.replace(/^partner\s*—\s*/, ""));
+
+  const firstGroups = partnerGroup(firstAbilities);
+  const secondGroups = partnerGroup(secondAbilities);
+  const knownGroups = new Set([
+    "character select",
+    "father & son",
+    "friends forever",
+    "survivors",
+  ]);
+
+  if (
+    firstGroups.some(
+      (group) => knownGroups.has(group) && secondGroups.includes(group),
+    )
+  ) {
+    return "valid";
+  }
+
+  // Also recognize older saved text from before the keyword update.
+  if (
+    has(firstAbilities, "friends forever") &&
+    has(secondAbilities, "friends forever")
+  ) {
+    return "valid";
+  }
+
+  const normalizeName = (name: string) =>
+    name.trim().toLowerCase().replace(/[’]/g, "'");
+
+  if (
+    has(firstAbilities, `partner with ${normalizeName(second.name)}`) &&
+    has(secondAbilities, `partner with ${normalizeName(first.name)}`)
+  ) {
+    return "valid";
+  }
+
+  const isBackground = (type: ReturnType<typeof types>) =>
+    /\bEnchantment\b/.test(type.main) && /\bBackground\b/.test(type.subtypes);
+
+  if (
+    (has(firstAbilities, "choose a background") && isBackground(b)) ||
+    (has(secondAbilities, "choose a background") && isBackground(a))
+  ) {
+    return "valid";
+  }
+
+  const isDoctor = (type: ReturnType<typeof types>) =>
+    /\bCreature\b/.test(type.main) &&
+    type.subtypes.replace(/\s+/g, " ") === "Time Lord Doctor";
+
+  if (
+    /\bCreature\b/.test(a.main) &&
+    /\bCreature\b/.test(b.main) &&
+    ((has(firstAbilities, "doctor's companion") && isDoctor(b)) ||
+      (has(secondAbilities, "doctor's companion") && isDoctor(a)))
+  ) {
+    return "valid";
+  }
+
+  if (
+    [...firstGroups, ...secondGroups].some((group) => !knownGroups.has(group))
+  ) {
+    return "unknown";
+  }
+
+  return "invalid";
+}
+
 export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
   const active = entries.filter(
     (entry) => entry.card_role === "main" || entry.card_role === "commander",
@@ -149,10 +266,49 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
         }`,
   );
 
+  const pairing =
+    commanders.length === 2
+      ? commanderPair(commanders[0], commanders[1])
+      : null;
+
+  if (commanders.length > 2) {
+    for (const commander of commanders) {
+      warn(
+        commander,
+        "More than two commander entries are selected. Normal Commander " +
+          "allows one commander or a permitted pair.",
+      );
+    }
+  } else if (pairing === "invalid") {
+    for (const commander of commanders) {
+      warn(
+        commander,
+        "These two cards do not form a permitted commander pair under " +
+          "the pairing rules checked here. Your pod may allow them by agreement.",
+      );
+    }
+  } else if (pairing === "unknown") {
+    for (const commander of commanders) {
+      warn(
+        commander,
+        "Commander pairing needs review because of missing data or " +
+          "a special case this checker does not yet verify.",
+      );
+    }
+  } else if (pairing === "valid") {
+    notes.push(
+      "The two selected commanders have a recognized pairing ability.",
+    );
+  }
+
   for (const commander of commanders) {
     if (commander.quantity !== 1) {
       warn(commander, "Each selected commander should have quantity 1.");
     }
+
+    // A valid pairing can qualify a card such as a Background that
+    // cannot serve as a commander on its own.
+    if (pairing === "valid") continue;
 
     const eligibility = commanderEligibility(commander);
 
@@ -162,7 +318,7 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
         "This card does not meet the normal commander eligibility rules. " +
           "Your pod may allow it by agreement.",
       );
-    } else if (eligibility === "unknown") {
+    } else if (eligibility === "unknown" && pairing !== "unknown") {
       warn(
         commander,
         "Commander eligibility needs review. This card has missing data " +
@@ -266,9 +422,9 @@ export function checkDeck(entries: readonly CheckEntry[]): DeckCheckResult {
   }
 
   notes.push(
-    "Checks cover deck size, color restrictions, copy limits, and basic " +
-      "commander eligibility. Special commander cases, pairings, and banned " +
-      "cards are not fully checked yet.",
+    "Checks cover deck size, color restrictions, copy limits, basic " +
+      "commander eligibility, and recognized commander pairings. " +
+      "Some special cases need review. Banned cards are not checked yet.",
     "Warnings do not prevent saving. Your pod can agree to house rules.",
   );
 
