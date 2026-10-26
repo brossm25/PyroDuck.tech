@@ -732,17 +732,38 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         "other land-denial effects or combinations.",
     );
 
-    const extraTurns = active.filter((entry) =>
-      /\bextra turns?\b/.test(rulesText(entry)),
-    );
+    const extraTurns = active.filter((entry) => {
+      const text = rulesText(entry);
+      const grants = text.matchAll(
+        /\b(?:take|takes|taking|get|gets|gain|gains) (?:an?|one|two|three|four|five|x|that many) extra turns?\b/g,
+      );
+
+      for (const match of grants) {
+        const before = text.slice(0, match.index);
+
+        // Ignore replacement and prevention wording.
+        if (
+          /\b(?:would|can't|cannot|can not|don't|doesn't|do not|does not)\s*$/.test(
+            before,
+          )
+        ) {
+          continue;
+        }
+
+        return true;
+      }
+
+      return false;
+    });
 
     category(
       "Extra Turns · text estimate",
       extraTurns,
       missingRules > 0,
-      "Matches cards whose rules text mentions extra turns. " +
-        "Includes conditional effects and effects that grant turns to other players. " +
-        "Cards that prevent extra turns may also appear; review the listed cards.",
+      "Estimates effects that grant extra turns from common rules wording, " +
+        "including conditional effects and turns granted to other players. " +
+        "Filters out common prevention and replacement wording. " +
+        "Unusual wording may be missed or misclassified; review the listed cards.",
     );
 
     const tutors = active.filter((entry) => {
