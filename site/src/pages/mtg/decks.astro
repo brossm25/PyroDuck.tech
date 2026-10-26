@@ -536,8 +536,8 @@ import Layout from "@/layouts/Layout.astro";
     const real = cards.filter((card) => !card.is_proxy);
     const proxies = cards.filter((card) => card.is_proxy);
 
-    stat("Real cards", String(quantityOf(real)));
-    stat("Proxy cards", String(quantityOf(proxies)));
+    stat("Real cards", `${quantityOf(real)} / ${decks.length * 100}`);
+    stat("Proxy cards", `${quantityOf(proxies)} / ${decks.length * 100}`);
 
     function valueStat(label: string, entries: PreviewCard[]) {
       let total = 0;
