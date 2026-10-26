@@ -107,8 +107,8 @@ BEGIN
     card_faces = v_new.card_faces,
     commander_legality = v_new.commander_legality,
     legality_checked_at = CASE
-    	WHEN v_new.commander_legality IS NOT NULL THEN now()
-    	ELSE NULL
+        WHEN v_new.commander_legality IS NOT NULL THEN now()
+        ELSE NULL
     END,
     price_usd = v_new.price_usd,
     price_checked_at = now(),
