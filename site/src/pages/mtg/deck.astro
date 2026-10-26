@@ -309,6 +309,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     quantityOf,
     safeCardImage,
   } from "@/lib/mtgFormat";
+  import { renderDeckCombos, resetDeckCombos } from "@/lib/deckCombosUI";
 
   let deckImporter: ReturnType<typeof setupDeckImport> | undefined;
 
@@ -582,6 +583,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   }
 
   function renderPowerIndicators(entries: Entry[]) {
+    resetDeckCombos();
     const panel = get("panel-power");
     panel.replaceChildren();
 
@@ -799,6 +801,9 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       "Counts copies, so duplicate printings count together. Categories " +
         "can overlap. Refresh card data to update saved information.",
     );
+
+    const comboVersion = version;
+    renderDeckCombos(panel, entries, () => version === comboVersion);
   }
 
   function renderOverview(entries: Entry[]) {
@@ -1199,6 +1204,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   }
 
   async function load() {
+    resetDeckCombos();
     editingPrintingEntry = null;
     deckImporter?.reset();
     if (missingPrices.open) missingPrices.close();
