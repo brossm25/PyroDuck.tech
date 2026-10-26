@@ -20,7 +20,7 @@ import Layout from "@/layouts/Layout.astro";
         Your Commander decks.
       </h1>
 
-      <p class="mt-5 max-w-2xl text-lg text-brand-muted">
+      <p id="decks-description" class="mt-5 max-w-2xl text-lg text-brand-muted">
         Give your next deck a name. Decks start private, and you can choose who
         sees them as you build.
       </p>
@@ -45,6 +45,14 @@ import Layout from "@/layouts/Layout.astro";
       <div class="deck-toolbar">
         <a class="challenge-link" href="/mtg/challenge">
           32-Deck Challenge →
+        </a>
+
+        <a
+          id="deck-category-link"
+          class="challenge-link"
+          href="/mtg/decks?view=concept"
+        >
+          Concept Decks →
         </a>
 
         <p class="deck-status deck-count-badge" role="status"></p>
@@ -130,6 +138,30 @@ import Layout from "@/layouts/Layout.astro";
   const button = form?.querySelector<HTMLButtonElement>("button");
   const status = document.querySelector<HTMLElement>(".deck-status");
   const list = document.querySelector<HTMLUListElement>(".deck-list");
+
+  const conceptMode =
+    new URLSearchParams(window.location.search).get("view") === "concept";
+
+  const categoryLink = document.querySelector<HTMLAnchorElement>(
+    "#deck-category-link",
+  )!;
+
+  if (conceptMode) {
+    document.title = "Concept Decks | PyroDuck Tech";
+    document.querySelector<HTMLElement>("#decks-heading")!.textContent =
+      "Your concept decks.";
+    document.querySelector<HTMLElement>("#decks-description")!.textContent =
+      "Build and explore deck ideas. These decks have separate totals and " +
+      "do not count toward your regular collection or 32-deck challenge.";
+    document.querySelector<HTMLElement>(
+      "#collection-summary-heading",
+    )!.textContent = "My concept deck estimates";
+
+    categoryLink.href = "/mtg/decks";
+    categoryLink.textContent = "Regular Decks →";
+
+    document.querySelector<HTMLButtonElement>("#find-proxies")!.hidden = true;
+  }
 
   let userId: string | null = null;
   let loading = false;
@@ -827,6 +859,7 @@ import Layout from "@/layouts/Layout.astro";
             .from("decks")
             .select("id, name, visibility, created_at")
             .eq("user_id", userId!)
+            .eq("is_concept", conceptMode)
             .order("name", { ascending: true })
             .order("id", { ascending: true })
             .range(from, to);
@@ -909,7 +942,7 @@ import Layout from "@/layouts/Layout.astro";
 
       const { data, error } = await supabase
         .from("decks")
-        .insert({ name })
+        .insert({ name, is_concept: conceptMode })
         .select("id")
         .single();
 
@@ -1441,5 +1474,9 @@ import Layout from "@/layouts/Layout.astro";
     background: var(--color-pyroduck-afterdark);
     color: var(--color-pyroduck-lime);
     font-weight: 700;
+  }
+
+  #find-proxies[hidden] {
+    display: none;
   }
 </style>

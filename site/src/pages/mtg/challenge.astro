@@ -91,6 +91,7 @@ import Layout from "@/layouts/Layout.astro";
             .from("decks")
             .select("id, name")
             .eq("user_id", userId)
+            .eq("is_concept", false)
             .order("name")
             .order("id")
             .range(from, to);

@@ -26,6 +26,15 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
             <option value="public">Public — anyone with the link</option>
           </select>
         </label>
+
+        <label>
+          Deck category
+          <select name="is_concept">
+            <option value="false">Regular deck</option>
+            <option value="true">Concept deck — digital build / idea</option>
+          </select>
+        </label>
+
         <button type="submit">Save details</button>
         <button id="delete-deck" type="button"> Delete entire deck </button>
       </form>
@@ -320,6 +329,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     name: string;
     description: string;
     visibility: string;
+    is_concept: boolean;
   }
   interface SavedFace {
     name: string;
@@ -1295,7 +1305,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       if (sessionError) throw sessionError;
       const { data, error } = await supabase
         .from("decks")
-        .select("id, user_id, name, description, visibility")
+        .select("id, user_id, name, description, visibility, is_concept")
         .eq("id", deckId)
         .maybeSingle();
       if (current !== version) return;
@@ -1316,6 +1326,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       ).value = deck.description;
       (settings.elements.namedItem("visibility") as HTMLSelectElement).value =
         deck.visibility;
+      (settings.elements.namedItem("is_concept") as HTMLSelectElement).value =
+        String(deck.is_concept);
       settings.hidden = !owner;
       get("deck-add").hidden = !owner;
       await loadEntries();
@@ -1384,17 +1396,18 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     if (!name) return;
     const description = String(values.get("description") ?? "");
     const visibility = String(values.get("visibility"));
+    const is_concept = values.get("is_concept") === "true";
     void mutate(async () => {
       const { data, error } = await supabase
         .from("decks")
-        .update({ name, description, visibility })
+        .update({ name, description, visibility, is_concept })
         .eq("id", deckId!)
         .eq("user_id", deck!.user_id)
         .select("id");
       if (error) throw error;
       if (!data?.length)
         throw new Error("Details were not saved. Refresh and try again.");
-      deck = { ...deck!, name, description, visibility };
+      deck = { ...deck!, name, description, visibility, is_concept };
       get("deck-heading").textContent = name;
       await loadEntries();
       message("Deck details saved.");
