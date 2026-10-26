@@ -706,6 +706,29 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         .toLowerCase();
     }
 
+    const massLandDenialNames = new Set([
+      "armageddon",
+      "blood moon",
+      "ruination",
+      "sunder",
+      "winter orb",
+    ]);
+
+    const massLandDenial = active.filter((entry) =>
+      massLandDenialNames.has(entry.name.trim().toLowerCase()),
+    );
+
+    category(
+      "Mass Land Denial · starter list",
+      massLandDenial,
+      false,
+      "Matches five examples named in Wizards’ Commander bracket guidance: " +
+        "Armageddon, Blood Moon, Ruination, Sunder, and Winter Orb. " +
+        "This list is incomplete and includes restrictions on using lands, " +
+        "not just land destruction. A count of zero does not rule out " +
+        "other land-denial effects or combinations.",
+    );
+
     const extraTurns = active.filter((entry) =>
       /\bextra turns?\b/.test(rulesText(entry)),
     );
