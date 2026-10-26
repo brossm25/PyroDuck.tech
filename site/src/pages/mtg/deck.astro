@@ -766,29 +766,55 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
         "Unusual wording may be missed or misclassified; review the listed cards.",
     );
 
-    const tutors = active.filter((entry) => {
-      const searches = rulesText(entry).matchAll(
-        /\bsearch your library for ([^.]+)/g,
+    function tutorSearches(entry: Entry): string[] {
+      const text = rulesText(entry).replace(/[’‘]/g, "'");
+      const searches = text.matchAll(
+        /\bsearch (?:your library(?: and\/or (?:your )?graveyard)?|your graveyard and\/or (?:your )?library) for ([^.]+)/g,
       );
 
-      for (const [, searchedFor] of searches) {
-        const landOnly =
-          /^(?:(?:a|an|up to (?:one|two|three|\d+)) )?(?:basic )?land cards?\b/.test(
-            searchedFor,
-          ) ||
-          /^(?:(?:a|an|up to (?:one|two|three|\d+)) )?(?:(?:plains|island|swamp|mountain|forest)(?:,?\s+(?:and\/or|or|and)\s+|\s*,\s*)?)+ cards?\b/.test(
-            searchedFor,
-          );
+      const targets: string[] = [];
 
-        if (!landOnly) return true;
+      for (const match of searches) {
+        const before = text.slice(0, match.index);
+
+        if (
+          /\b(?:can't|cannot|can not|don't|doesn't|do not|does not)\s*$/.test(
+            before,
+          )
+        ) {
+          continue;
+        }
+
+        targets.push(match[1]);
       }
 
-      return false;
+      return targets;
+    }
+
+    function isLandOnlySearch(target: string): boolean {
+      const selection = target
+        .split(",")[0]
+        .replace(/\s+(?:and\s+)?(?:reveal|put|shuffle)\b.*$/, "")
+        .trim();
+
+      return /^(?:(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+|x|up to (?:one|two|three|four|five|six|seven|eight|nine|ten|\d+|x)|any number of)\s+)?(?:basic\s+)?(?:land|plains|island|swamp|mountain|forest)(?:\s+(?:or|and|and\/or)\s+(?:basic\s+)?(?:land|plains|island|swamp|mountain|forest))*\s+cards?$/.test(
+        selection,
+      );
+    }
+
+    const tutors = active.filter((entry) => {
+      const text = rulesText(entry);
+
+      if (/\b(?:transmute|transfigure)\b/.test(text)) {
+        return true;
+      }
+
+      return tutorSearches(entry).some((target) => !isLandOnlySearch(target));
     });
 
     const universalTutors = tutors.filter((entry) =>
-      /\bsearch your library for (?:a card|up to one card)(?=\s*[,.;]|$)/.test(
-        rulesText(entry),
+      tutorSearches(entry).some((target) =>
+        /^(?:a card|up to one card)(?=\s*[,.;]|$)/.test(target),
       ),
     );
 
@@ -796,9 +822,10 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       "Tutors · text estimate",
       tutors,
       missingRules > 0,
-      "Estimates tutors from explicit library-search wording, excluding " +
-        "common land-only searches. Keyword abilities and unusual wording " +
-        "may be missed. Review the listed cards.",
+      "Estimates searches of your library, including combined library " +
+        "and graveyard searches, plus Transmute and Transfigure. " +
+        "Excludes common land-only searches. Other keyword abilities " +
+        "and unusual wording may be missed or misclassified. Review the listed cards.",
     );
 
     category(
