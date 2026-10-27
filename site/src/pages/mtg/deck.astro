@@ -1779,6 +1779,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   });
 
   deckImporter = setupDeckImport({
+    openCardPreview,
+
     canEdit: () => owner && !busy,
 
     existing: () => savedEntries,

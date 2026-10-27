@@ -213,6 +213,24 @@
     cursor: pointer;
   }
 
+  #deck-import-results :global(button.import-image-preview) {
+    float: left;
+    width: 70px;
+    min-height: 0;
+    margin: 0 1rem 0.75rem 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: zoom-in;
+  }
+
+  #deck-import-results :global(button.import-image-preview img) {
+    float: none;
+    display: block;
+    width: 100%;
+    margin: 0;
+  }
+
   #deck-import-results :global(:disabled) {
     opacity: 0.5;
     cursor: default;

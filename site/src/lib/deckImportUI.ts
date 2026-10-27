@@ -25,6 +25,15 @@ interface ExistingCard {
 }
 
 interface Options {
+  openCardPreview: (
+    entry: {
+      name: string;
+      finish: string;
+      image_url: string | null;
+      card_faces: { name: string; image_url: string | null }[] | null;
+    },
+    trigger: HTMLButtonElement,
+  ) => void;
   canEdit: () => boolean;
   existing: () => ExistingCard[];
   save: (cards: ReviewedImport[]) => Promise<void>;
@@ -209,7 +218,32 @@ export function setupDeckImport(options: Options) {
             image.width = 488;
             image.height = 680;
             image.loading = "lazy";
-            li.append(image);
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "import-image-preview";
+            button.setAttribute("aria-label", `Enlarge ${image.alt}`);
+            button.setAttribute("aria-haspopup", "dialog");
+
+            button.addEventListener("click", () => {
+              const card = item.card;
+              if (!card) return;
+
+              options.openCardPreview(
+                {
+                  name: card.name,
+                  finish: item.finish ?? "nonfoil",
+                  image_url: imageUrl,
+                  card_faces: (card.card_faces ?? []).map((face) => ({
+                    name: face.name ?? card.name,
+                    image_url: face.image_uris?.normal ?? null,
+                  })),
+                },
+                button,
+              );
+            });
+
+            button.append(image);
+            li.append(button);
           }
         } catch {
           // A missing image does not prevent reviewing the card.
