@@ -1,3 +1,4 @@
+import { sectionFor, sectionNames } from "./deckSections";
 import {
   parseCardList,
   type ImportFinish,
@@ -184,7 +185,39 @@ export function setupDeckImport(options: Options) {
   function render() {
     results.replaceChildren();
 
-    rows.forEach((item, index) => {
+    const order = ["Commanders", ...sectionNames];
+
+    const displayedRows = rows.map((item, index) => ({
+      item,
+      index,
+      section: sectionFor({
+        card_role: item.row.role,
+        type_line: item.card?.type_line ?? null,
+      }),
+    }));
+
+    displayedRows.sort((a, b) => {
+      const sectionDifference =
+        order.indexOf(a.section) - order.indexOf(b.section);
+
+      if (sectionDifference !== 0) return sectionDifference;
+
+      const nameA = a.item.card?.name ?? a.item.row.name;
+      const nameB = b.item.card?.name ?? b.item.row.name;
+      return nameA.localeCompare(nameB) || a.index - b.index;
+    });
+
+    let previousSection = "";
+
+    displayedRows.forEach(({ item, index, section }) => {
+      if (section !== previousSection) {
+        const heading = document.createElement("li");
+        heading.className = "import-section-heading";
+        heading.textContent = section;
+        results.append(heading);
+        previousSection = section;
+      }
+
       const li = document.createElement("li");
       const included = document.createElement("input");
       included.type = "checkbox";
