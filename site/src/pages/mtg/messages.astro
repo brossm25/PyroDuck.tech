@@ -184,22 +184,27 @@ import Layout from "@/layouts/Layout.astro";
           return;
         }
 
-        const [saleResult, friendResult, hiddenResult] = await Promise.all([
-          supabase.rpc("get_my_sale_conversations"),
-          supabase.rpc("get_my_friend_conversations"),
-          supabase.rpc("get_my_hidden_conversations"),
-        ]);
+        const [saleResult, friendResult, hiddenResult, unreadResult] =
+          await Promise.all([
+            supabase.rpc("get_my_sale_conversations"),
+            supabase.rpc("get_my_friend_conversations"),
+            supabase.rpc("get_my_hidden_conversations"),
+            supabase.rpc("get_my_unread_conversations"),
+          ]);
 
         if (active !== inboxVersion) return;
         if (saleResult.error) throw saleResult.error;
         if (friendResult.error) throw friendResult.error;
         if (hiddenResult.error) throw hiddenResult.error;
+        if (unreadResult.error) throw unreadResult.error;
 
-        const saleRows = (saleResult.data ?? []).map((conversation) => ({
+        const saleRows = (
+          (saleResult.data ?? []) as Omit<Conversation, "kind" | "can_send">[]
+        ).map((conversation): Conversation => ({
           ...conversation,
-          kind: "sale" as const,
+          kind: "sale",
           can_send: true,
-        })) as Conversation[];
+        }));
 
         const friendRows = (
           (friendResult.data ?? []) as FriendConversation[]
@@ -236,15 +241,34 @@ import Layout from "@/layouts/Layout.astro";
           ? "Choose a conversation. Use Check for replies to load new messages."
           : "No conversations yet. Message a friend or ask about a sale listing.";
 
+        const unreadCounts = new Map<string, number>(
+          (unreadResult.data ?? []).map(
+            (item: {
+              conversation_kind: string;
+              conversation_id: string;
+              unread_count: number | string;
+            }) => [
+              `${item.conversation_kind}:${item.conversation_id}`,
+              Number(item.unread_count),
+            ],
+          ),
+        );
+
         for (const conversation of rows) {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
           button.dataset.conversation = conversation.id;
-          button.textContent =
+          const label =
             conversation.kind === "friend"
               ? `Friend · ${otherName(conversation)}`
               : `${conversation.card_name} · ${otherName(conversation)}`;
+
+          const unread =
+            unreadCounts.get(`${conversation.kind}:${conversation.id}`) ?? 0;
+
+          button.dataset.baseLabel = label;
+          button.textContent = unread ? `${label} · ${unread} unread` : label;
           button.addEventListener("click", () => {
             void openConversation(conversation);
           });
@@ -371,6 +395,40 @@ import Layout from "@/layouts/Layout.astro";
 
           item.append(heading, text);
           messages.append(item);
+        }
+
+        if (rows.length) {
+          const lastMessage = rows[rows.length - 1];
+
+          const { error: readError } = await supabase.rpc(
+            "mark_conversation_read",
+            {
+              p_kind: conversation.kind,
+              p_conversation_id: conversation.id,
+              p_message_id: lastMessage.id,
+            },
+          );
+
+          if (!isCurrent()) return;
+
+          if (readError) {
+            threadStatus.textContent =
+              "Messages loaded, but their read status couldn’t be saved.";
+            return;
+          }
+
+          const conversationButton = Array.from(
+            conversations.querySelectorAll<HTMLButtonElement>(
+              "[data-conversation]",
+            ),
+          ).find((button) => button.dataset.conversation === conversation.id);
+
+          if (conversationButton?.dataset.baseLabel) {
+            conversationButton.textContent =
+              conversationButton.dataset.baseLabel;
+          }
+
+          window.dispatchEvent(new Event("messages-read"));
         }
 
         threadStatus.textContent = rows.length
