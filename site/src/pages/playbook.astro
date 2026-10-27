@@ -1,0 +1,238 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { getCollection } from "astro:content";
+
+const entries = (await getCollection("playbook")).sort((a, b) =>
+  a.data.title.localeCompare(b.data.title),
+);
+
+const categories = [
+  "Component Security",
+  "Organizational Security",
+  "Connection Security",
+  "Societal Security",
+  "Data Security",
+  "Software Security",
+  "Human Security",
+  "System Security",
+];
+---
+
+<Layout
+  title="Cybersecurity PlayBook"
+  description="Ducky's cybersecurity learning notes, examples, and resources."
+>
+  <section class="mx-auto max-w-5xl px-6 py-12 sm:py-16">
+    <a class="back-link" href="/">← PyroDuck Tech</a>
+
+    <p class="eyebrow">LEARN. PRACTICE. BUILD.</p>
+    <h1>Cybersecurity PlayBook</h1>
+    <p class="intro">
+      A growing collection of notes, examples, and resources from my
+      cybersecurity studies and beyond.
+    </p>
+
+    <div class="playbook-search">
+      <label for="playbook-search">Search the playbook</label>
+      <input
+        id="playbook-search"
+        type="search"
+        placeholder="Search topics, categories, courses, or tags"
+        autocomplete="off"
+      />
+      <p id="playbook-search-status" role="status"></p>
+
+      <ul id="playbook-search-results" hidden>
+        {
+          entries.map((entry) => (
+            <li
+              data-search={`${entry.data.title} ${entry.data.category} ${entry.data.course} ${entry.data.tags.join(" ")} ${entry.body ?? ""}`.toLowerCase()}
+              hidden
+            >
+              <a href={`/playbook/${entry.id}`}>
+                <strong>{entry.data.title}</strong>
+                <span>
+                  {entry.data.category} · {entry.data.course}
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <h2>Explore the categories</h2>
+    <div class="category-grid">
+      {
+        categories.map((category) => (
+          <article class="category-card">
+            <h3>
+              {category === "Software Security" ? (
+                <a href="/playbook/software-security">{category} →</a>
+              ) : (
+                category
+              )}
+            </h3>
+            <p>
+              {category === "Software Security"
+                ? "Starting with application security and web fundamentals."
+                : "Entries coming as I explore this area."}
+            </p>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const search = document.querySelector<HTMLInputElement>("#playbook-search");
+  const results = document.querySelector<HTMLUListElement>(
+    "#playbook-search-results",
+  );
+  const entries = document.querySelectorAll<HTMLElement>(
+    "#playbook-search-results [data-search]",
+  );
+  const status = document.querySelector<HTMLElement>("#playbook-search-status");
+
+  search?.addEventListener("input", () => {
+    const query = search.value.trim().toLowerCase();
+    let count = 0;
+
+    entries.forEach((entry) => {
+      const matches =
+        query.length > 0 && (entry.dataset.search ?? "").includes(query);
+      entry.hidden = !matches;
+      if (matches) count++;
+    });
+
+    if (results) results.hidden = !query || count === 0;
+
+    if (status) {
+      status.textContent = query
+        ? `${count} ${count === 1 ? "entry" : "entries"} found.`
+        : "";
+    }
+  });
+</script>
+
+<style>
+  .back-link {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 700;
+  }
+
+  .eyebrow {
+    margin-top: 2rem;
+    color: var(--color-pyroduck-lime);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  h1 {
+    margin-top: 0.75rem;
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    font-weight: 700;
+  }
+
+  .intro {
+    max-width: 42rem;
+    margin-top: 1rem;
+    color: var(--color-brand-muted);
+    line-height: 1.7;
+  }
+
+  h2 {
+    margin-top: 3rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .playbook-search {
+    margin-top: 2rem;
+    max-width: 42rem;
+  }
+
+  .playbook-search label {
+    display: block;
+    font-weight: 700;
+  }
+
+  .playbook-search input {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .playbook-search input:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  #playbook-search-status {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+  }
+
+  #playbook-search-results {
+    margin-top: 0.75rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  #playbook-search-results li + li {
+    margin-top: 0.5rem;
+  }
+
+  #playbook-search-results a {
+    display: grid;
+    gap: 0.25rem;
+    padding: 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    text-decoration: none;
+  }
+
+  #playbook-search-results span {
+    color: var(--color-brand-muted);
+  }
+
+  .category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .category-card {
+    padding: 1.25rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  .category-card h3 {
+    color: var(--color-pyroduck-lime);
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
+  .category-card p {
+    margin-top: 0.75rem;
+    color: var(--color-brand-muted);
+    line-height: 1.6;
+  }
+
+  .back-link:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+</style>

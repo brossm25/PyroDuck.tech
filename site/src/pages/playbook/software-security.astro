@@ -1,0 +1,158 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { getCollection } from "astro:content";
+
+const entries = (await getCollection("playbook"))
+  .filter((entry) => entry.data.category === "Software Security")
+  .sort((a, b) => a.data.title.localeCompare(b.data.title));
+---
+
+<Layout title="Software Security">
+  <section class="mx-auto max-w-5xl px-6 py-12 sm:py-16">
+    <a class="back-link" href="/playbook">← Cybersecurity Playbook</a>
+
+    <h1>Software Security</h1>
+    <p class="intro">
+      Notes and resources about building and maintaining safer software.
+    </p>
+
+    <h2>Entries</h2>
+
+    <label class="search-label" for="entry-search">
+      Search Software Security
+    </label>
+    <input
+      id="entry-search"
+      class="entry-search"
+      type="search"
+      placeholder="Search titles, courses, or tags"
+      autocomplete="off"
+    />
+    <p id="search-status" class="search-status" role="status"></p>
+
+    {
+      entries.length ? (
+        <ul class="entry-list">
+          {entries.map((entry) => (
+            <li
+              data-search={`${entry.data.title} ${entry.data.course} ${entry.data.tags.join(" ")} ${entry.body ?? ""}`.toLowerCase()}
+            >
+              <a href={`/playbook/${entry.id}`}>
+                <strong>{entry.data.title}</strong>
+                <span>{entry.data.course}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="intro">No entries yet.</p>
+      )
+    }
+  </section>
+</Layout>
+
+<script>
+  const search = document.querySelector<HTMLInputElement>("#entry-search");
+  const entries = document.querySelectorAll<HTMLElement>(
+    ".entry-list [data-search]",
+  );
+  const status = document.querySelector<HTMLElement>("#search-status");
+
+  search?.addEventListener("input", () => {
+    const query = search.value.trim().toLowerCase();
+    let visible = 0;
+
+    entries.forEach((entry) => {
+      const matches = (entry.dataset.search ?? "").includes(query);
+      entry.hidden = !matches;
+      if (matches) visible++;
+    });
+
+    if (status) {
+      status.textContent = query
+        ? `${visible} ${visible === 1 ? "entry" : "entries"} found.`
+        : "";
+    }
+  });
+</script>
+
+<style>
+  .back-link {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 700;
+  }
+
+  h1 {
+    margin-top: 2rem;
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    font-weight: 700;
+  }
+
+  .intro {
+    margin-top: 1rem;
+    color: var(--color-brand-muted);
+  }
+
+  h2 {
+    margin-top: 2.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .search-label {
+    display: block;
+    margin-top: 1rem;
+    color: var(--color-brand-text);
+    font-weight: 700;
+  }
+
+  .entry-search {
+    width: 100%;
+    max-width: 32rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  .entry-search:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  .search-status {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+  }
+
+  .entry-list {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .entry-list a {
+    display: grid;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    text-decoration: none;
+  }
+
+  .entry-list span {
+    color: var(--color-brand-muted);
+  }
+
+  a:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+</style>
