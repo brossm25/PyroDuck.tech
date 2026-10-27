@@ -16,9 +16,15 @@ import Layout from "@/layouts/Layout.astro";
           <p class="player-handle"></p>
         </div>
 
-        <button type="button" class="player-share" disabled>
-          Copy profile link
-        </button>
+        <div class="player-actions">
+          <button type="button" class="player-share" disabled>
+            Copy profile link
+          </button>
+
+          <button type="button" class="player-message" hidden>
+            Message friend
+          </button>
+        </div>
       </div>
 
       <p class="player-status" role="status" aria-live="polite">
@@ -93,6 +99,8 @@ import Layout from "@/layouts/Layout.astro";
     const status = root.querySelector<HTMLElement>(".player-status")!;
     const content = root.querySelector<HTMLElement>(".player-content")!;
     const share = root.querySelector<HTMLButtonElement>(".player-share")!;
+    const messageFriend =
+      root.querySelector<HTMLButtonElement>(".player-message")!;
 
     const chaseList = root.querySelector<HTMLUListElement>(".chase-items")!;
     const deckList = root.querySelector<HTMLUListElement>(".deck-items")!;
@@ -119,6 +127,8 @@ import Layout from "@/layouts/Layout.astro";
       handle.textContent = "";
       content.hidden = true;
       share.disabled = true;
+      messageFriend.hidden = true;
+      messageFriend.disabled = false;
       chaseList.replaceChildren();
       deckList.replaceChildren();
       saleList.replaceChildren();
@@ -414,6 +424,23 @@ import Layout from "@/layouts/Layout.astro";
         status.textContent =
           "Showing the cards and decks you have permission to view.";
 
+        if (playerId !== viewerId) {
+          const { data: friendships, error: friendshipError } =
+            await supabase.rpc("get_my_friendships");
+
+          if (active !== version) return;
+
+          if (friendshipError) {
+            status.textContent =
+              "Profile loaded, but friendship status could not be checked.";
+          } else {
+            messageFriend.hidden = !(friendships ?? []).some(
+              (friend: { player_id: string; status: string }) =>
+                friend.player_id === playerId && friend.status === "accepted",
+            );
+          }
+        }
+
         await Promise.all([
           loadChase(active),
           loadDecks(active),
@@ -427,6 +454,39 @@ import Layout from "@/layouts/Layout.astro";
         }
       }
     }
+
+    messageFriend.addEventListener("click", async () => {
+      if (!playerId || !viewerId || messageFriend.disabled) return;
+
+      const active = version;
+      const user = viewerId;
+      messageFriend.disabled = true;
+      status.textContent = "Opening conversation…";
+
+      try {
+        const { data, error } = await supabase.rpc(
+          "start_friend_conversation",
+          { p_friend_id: playerId },
+        );
+
+        if (active !== version || viewerId !== user) return;
+        if (error) throw error;
+        if (!data) throw new Error("Conversation unavailable.");
+
+        window.location.assign(
+          `/mtg/messages?conversation=${encodeURIComponent(data)}`,
+        );
+      } catch {
+        if (active === version && viewerId === user) {
+          status.textContent =
+            "Couldn’t open the conversation. Check that you’re still friends and try again.";
+        }
+      } finally {
+        if (active === version && viewerId === user) {
+          messageFriend.disabled = false;
+        }
+      }
+    });
 
     share.addEventListener("click", async () => {
       if (!playerId || share.disabled) return;
@@ -490,6 +550,12 @@ import Layout from "@/layouts/Layout.astro";
     margin-top: 2rem;
   }
 
+  .player-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
   .player-name {
     font-size: clamp(2rem, 5vw, 3rem);
     font-weight: 700;
@@ -514,6 +580,7 @@ import Layout from "@/layouts/Layout.astro";
 
   .player-sections a,
   .player-share,
+  .player-message,
   .player-cards :global(button) {
     display: inline-flex;
     align-items: center;
@@ -602,7 +669,7 @@ import Layout from "@/layouts/Layout.astro";
 
   .player-link:hover,
   .player-sections a:hover,
-  .player-share:hover:not(:disabled),
+  .player-message:hover:not(:disabled),
   .player-cards :global(button:hover:not(:disabled)) {
     color: var(--color-pyroduck-lime);
     border-color: var(--color-pyroduck-lime);

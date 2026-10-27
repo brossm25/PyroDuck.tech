@@ -235,6 +235,49 @@
           }
 
           if (item.status === "accepted") {
+            const messageButton = document.createElement("button");
+            messageButton.type = "button";
+            messageButton.className = "friend-button";
+            messageButton.textContent = "Message";
+            messageButton.disabled = changing;
+            messageButton.setAttribute(
+              "aria-label",
+              `Message @${item.username}`,
+            );
+
+            messageButton.addEventListener("click", async () => {
+              if (messageButton.disabled || !userId) return;
+
+              const currentUser = userId;
+              messageButton.disabled = true;
+              messageButton.textContent = "Opening…";
+
+              try {
+                const { data, error } = await supabase.rpc(
+                  "start_friend_conversation",
+                  { p_friend_id: item.player_id },
+                );
+
+                if (userId !== currentUser || !messageButton.isConnected)
+                  return;
+                if (error) throw error;
+                if (typeof data !== "string")
+                  throw new Error("Conversation unavailable.");
+
+                window.location.assign(
+                  `/mtg/messages?conversation=${encodeURIComponent(data)}`,
+                );
+              } catch {
+                if (userId === currentUser && messageButton.isConnected) {
+                  messageButton.disabled = false;
+                  messageButton.textContent = "Retry message";
+                  messageButton.title =
+                    "Couldn’t open the conversation. Try again.";
+                }
+              }
+            });
+
+            actions.append(messageButton);
             addButton("Remove friend", "remove");
           } else if (item.recipient_id === userId) {
             addButton("Accept", "accept", true);

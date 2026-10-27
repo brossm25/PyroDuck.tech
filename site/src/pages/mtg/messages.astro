@@ -35,7 +35,7 @@ import Layout from "@/layouts/Layout.astro";
         </p>
 
         <div class="messages-layout">
-          <nav aria-label="Sale conversations">
+          <nav aria-label="Conversations">
             <ul class="conversation-list"></ul>
           </nav>
 
@@ -43,9 +43,15 @@ import Layout from "@/layouts/Layout.astro";
             <h2 class="conversation-title"></h2>
             <p class="conversation-details"></p>
 
-            <button type="button" class="thread-refresh">
-              Check for replies
-            </button>
+            <div class="conversation-actions">
+              <button type="button" class="conversation-hide">
+                Delete conversation for me
+              </button>
+
+              <button type="button" class="thread-refresh">
+                Check for replies
+              </button>
+            </div>
 
             <p class="thread-status" role="status" aria-live="polite"></p>
             <ol class="message-list" aria-label="Messages"></ol>
@@ -75,12 +81,21 @@ import Layout from "@/layouts/Layout.astro";
 
   interface Conversation {
     id: string;
+    kind: "sale" | "friend";
+    can_send: boolean;
     card_name: string;
     set_name: string;
     collector_number: string;
     finish: string;
     other_username: string | null;
     created_at: string;
+  }
+
+  interface FriendConversation {
+    id: string;
+    other_username: string | null;
+    created_at: string;
+    can_send: boolean;
   }
 
   interface SaleMessage {
@@ -101,6 +116,8 @@ import Layout from "@/layouts/Layout.astro";
     const panel = root.querySelector<HTMLElement>(".conversation-panel")!;
     const title = root.querySelector<HTMLElement>(".conversation-title")!;
     const details = root.querySelector<HTMLElement>(".conversation-details")!;
+    const hideConversation =
+      root.querySelector<HTMLButtonElement>(".conversation-hide")!;
     const threadRefresh =
       root.querySelector<HTMLButtonElement>(".thread-refresh")!;
     const threadStatus = root.querySelector<HTMLElement>(".thread-status")!;
@@ -167,23 +184,67 @@ import Layout from "@/layouts/Layout.astro";
           return;
         }
 
-        const { data, error } = await supabase.rpc("get_my_sale_conversations");
+        const [saleResult, friendResult, hiddenResult] = await Promise.all([
+          supabase.rpc("get_my_sale_conversations"),
+          supabase.rpc("get_my_friend_conversations"),
+          supabase.rpc("get_my_hidden_conversations"),
+        ]);
 
         if (active !== inboxVersion) return;
-        if (error) throw error;
+        if (saleResult.error) throw saleResult.error;
+        if (friendResult.error) throw friendResult.error;
+        if (hiddenResult.error) throw hiddenResult.error;
 
-        const rows = (data ?? []) as Conversation[];
+        const saleRows = (saleResult.data ?? []).map((conversation) => ({
+          ...conversation,
+          kind: "sale" as const,
+          can_send: true,
+        })) as Conversation[];
+
+        const friendRows = (
+          (friendResult.data ?? []) as FriendConversation[]
+        ).map((conversation): Conversation => ({
+          ...conversation,
+          kind: "friend",
+          card_name: "",
+          set_name: "",
+          collector_number: "",
+          finish: "",
+        }));
+
+        const hidden = new Set(
+          (hiddenResult.data ?? []).map(
+            (item: { conversation_kind: string; conversation_id: string }) =>
+              `${item.conversation_kind}:${item.conversation_id}`,
+          ),
+        );
+
+        const requestedConversation = new URL(
+          window.location.href,
+        ).searchParams.get("conversation");
+
+        const rows = [...saleRows, ...friendRows]
+          .filter((conversation) => {
+            return (
+              conversation.id === requestedConversation ||
+              !hidden.has(`${conversation.kind}:${conversation.id}`)
+            );
+          })
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
         inboxStatus.textContent = rows.length
           ? "Choose a conversation. Use Check for replies to load new messages."
-          : "No conversations yet. Open a sale listing and choose I’m interested.";
+          : "No conversations yet. Message a friend or ask about a sale listing.";
 
         for (const conversation of rows) {
           const item = document.createElement("li");
           const button = document.createElement("button");
           button.type = "button";
           button.dataset.conversation = conversation.id;
-          button.textContent = `${conversation.card_name} · ${otherName(conversation)}`;
+          button.textContent =
+            conversation.kind === "friend"
+              ? `Friend · ${otherName(conversation)}`
+              : `${conversation.card_name} · ${otherName(conversation)}`;
           button.addEventListener("click", () => {
             void openConversation(conversation);
           });
@@ -218,10 +279,24 @@ import Layout from "@/layouts/Layout.astro";
 
       selected = conversation;
       panel.hidden = false;
-      title.textContent = `${conversation.card_name} · ${otherName(conversation)}`;
+      title.textContent =
+        conversation.kind === "friend"
+          ? `Conversation with ${otherName(conversation)}`
+          : `${conversation.card_name} · ${otherName(conversation)}`;
+
       details.textContent =
-        `${conversation.set_name} #${conversation.collector_number} · ` +
-        conversation.finish;
+        conversation.kind === "friend"
+          ? conversation.can_send
+            ? "Direct message"
+            : "You can read this conversation, but you must be friends to send new messages."
+          : `${conversation.set_name} #${conversation.collector_number} · ${conversation.finish}`;
+
+      body.disabled = !conversation.can_send;
+      send.disabled = !conversation.can_send;
+      body.placeholder =
+        conversation.kind === "friend"
+          ? "Write a message to your friend…"
+          : "Ask about the card or make an offer…";
       body.value = "";
       sendStatus.textContent = "";
 
@@ -259,7 +334,11 @@ import Layout from "@/layouts/Layout.astro";
         const rows = await loadAllPages<SaleMessage>(
           async (from, to) => {
             const { data, error } = await supabase
-              .from("sale_messages")
+              .from(
+                conversation.kind === "friend"
+                  ? "friend_messages"
+                  : "sale_messages",
+              )
               .select("id, sender_id, body, created_at")
               .eq("conversation_id", conversation.id)
               .order("created_at", { ascending: true })
@@ -318,6 +397,8 @@ import Layout from "@/layouts/Layout.astro";
       }
 
       const user = viewer;
+      const conversation = selected;
+      if (!conversation.can_send) return;
       const conversationId = selected.id;
       const active = inboxVersion;
 
@@ -342,11 +423,17 @@ import Layout from "@/layouts/Layout.astro";
           throw new Error("Please sign in again.");
         }
 
-        const { error } = await supabase.from("sale_messages").insert({
-          conversation_id: conversationId,
-          sender_id: user,
-          body: text,
-        });
+        const { error } = await supabase
+          .from(
+            conversation.kind === "friend"
+              ? "friend_messages"
+              : "sale_messages",
+          )
+          .insert({
+            conversation_id: conversationId,
+            sender_id: user,
+            body: text,
+          });
 
         if (error) throw error;
 
@@ -370,8 +457,48 @@ import Layout from "@/layouts/Layout.astro";
         }
       } finally {
         sending = false;
-        send.disabled = false;
+        send.disabled = selected ? !selected.can_send : false;
         inboxRefresh.disabled = false;
+      }
+    });
+
+    hideConversation.addEventListener("click", async () => {
+      if (!viewer || !selected || sending || hideConversation.disabled) return;
+
+      const conversation = selected;
+      const user = viewer;
+      const active = inboxVersion;
+
+      const confirmed = window.confirm(
+        "Remove this conversation from your inbox? " +
+          "The other person will still have it. It can return if they send a new message.",
+      );
+
+      if (!confirmed) return;
+
+      hideConversation.disabled = true;
+      sendStatus.textContent = "Removing conversation from your inbox…";
+
+      try {
+        const { error } = await supabase.rpc("hide_my_conversation", {
+          p_kind: conversation.kind,
+          p_conversation_id: conversation.id,
+        });
+
+        if (active !== inboxVersion || viewer !== user) return;
+        if (error) throw error;
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("conversation");
+        window.history.replaceState(null, "", url);
+
+        await loadInbox();
+      } catch (error) {
+        if (active === inboxVersion && viewer === user) {
+          sendStatus.textContent = `Couldn’t remove the conversation: ${errorMessage(error)}`;
+        }
+      } finally {
+        hideConversation.disabled = false;
       }
     });
 
@@ -401,6 +528,12 @@ import Layout from "@/layouts/Layout.astro";
 </script>
 
 <style>
+  .conversation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
   .messages-app {
     padding: 1.25rem;
     border: 1px solid var(--color-pyroduck-plasma);
