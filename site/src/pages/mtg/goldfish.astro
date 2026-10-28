@@ -550,6 +550,58 @@ import Layout from "@/layouts/Layout.astro";
   const get = <T extends HTMLElement>(id: string) =>
     document.getElementById(id) as T;
 
+  document
+    .querySelectorAll<HTMLInputElement>('input[type="number"]')
+    .forEach((input) => {
+      const wrapper = document.createElement("span");
+      wrapper.className = "number-control";
+
+      input.before(wrapper);
+      wrapper.append(input);
+
+      const controls = document.createElement("span");
+      controls.className = "number-control-buttons";
+
+      const labels: Record<string, string> = {
+        "practice-life": "life",
+        "practice-tax": "commander tax",
+        "preview-counters": "counters",
+        "token-quantity": "token copies",
+      };
+
+      for (const direction of [1, -1]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = direction === 1 ? "+" : "−";
+        button.setAttribute(
+          "aria-label",
+          `${direction === 1 ? "Increase" : "Decrease"} ${labels[input.id] ?? "value"}`,
+        );
+        button.setAttribute("aria-controls", input.id);
+
+        button.addEventListener("click", () => {
+          if (input.disabled || input.readOnly) return;
+
+          if (!Number.isFinite(input.valueAsNumber)) {
+            input.value = input.min || "0";
+          }
+
+          if (direction === 1) {
+            input.stepUp();
+          } else {
+            input.stepDown();
+          }
+
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+
+        controls.append(button);
+      }
+
+      wrapper.append(controls);
+    });
+
   const status = get<HTMLParagraphElement>("practice-status");
   const table = get<HTMLDivElement>("practice-table");
   const mat = get<HTMLDivElement>("practice-mat");
@@ -2637,6 +2689,73 @@ import Layout from "@/layouts/Layout.astro";
     width: 5rem;
   }
 
+  :global(.number-control) {
+    position: relative;
+    display: inline-block;
+    width: 5rem;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+
+  :global(.number-control > input[type="number"]) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding-left: 0.25rem;
+    padding-right: 2rem;
+    text-align: center;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  :global(.number-control > input::-webkit-inner-spin-button),
+  :global(.number-control > input::-webkit-outer-spin-button) {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+
+  :global(.number-control-buttons) {
+    position: absolute;
+    inset: 1px 1px 1px auto;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    width: 1.75rem;
+    overflow: hidden;
+    border-radius: 0 0.45rem 0.45rem 0;
+  }
+
+  :global(.number-control-buttons > button) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #a444fc;
+    color: #b5fb14;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  :global(.number-control-buttons > button + button) {
+    border-top: 1px solid #3b038d;
+  }
+
+  :global(.number-control-buttons > button:hover) {
+    background: #3b038d;
+    color: #b5fb14;
+  }
+
+  :global(.number-control-buttons > button:focus-visible) {
+    outline: 2px solid #b5fb14;
+    outline-offset: -2px;
+  }
+
   .toolbar,
   .toolbar-group {
     display: flex;
@@ -3340,5 +3459,16 @@ import Layout from "@/layouts/Layout.astro";
     .practice :global(.ability-summary) {
       min-height: 44px;
     }
+  }
+
+  .tax-label {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+    width: 100%;
+  }
+
+  .tax-label :global(.number-control) {
+    justify-self: center;
   }
 </style>
