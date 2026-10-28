@@ -225,6 +225,7 @@ import Layout from "@/layouts/Layout.astro";
 
   <div id="card-hover-preview" aria-hidden="true" hidden>
     <img id="card-hover-image" alt="" width="488" height="680" />
+    <p id="card-hover-abilities" hidden></p>
   </div>
 
   <dialog
@@ -246,6 +247,7 @@ import Layout from "@/layouts/Layout.astro";
 
       <div class="inspector-controls">
         <p id="practice-card-location"></p>
+        <p id="preview-active-abilities" class="help" hidden></p>
 
         <button id="preview-flip" type="button" hidden>Flip face</button>
 
@@ -329,6 +331,10 @@ import Layout from "@/layouts/Layout.astro";
             </label>
           </div>
 
+          <button id="preview-clear-pt" type="button">
+            Clear manual power/toughness
+          </button>
+
           <p class="help">
             Enter the current values, then adjust each independently. Variable
             values such as * are manual. Counters do not automatically change
@@ -341,6 +347,40 @@ import Layout from "@/layouts/Layout.astro";
           </label>
 
           <button id="preview-tap" type="button">Tap</button>
+
+          <fieldset class="ability-controls">
+            <legend>Granted abilities</legend>
+
+            <div id="preview-ability-options" class="ability-options"></div>
+
+            <label>
+              Custom tag
+              <input
+                id="preview-custom-ability"
+                type="text"
+                maxlength="30"
+                placeholder="For example: Cannot block"
+              />
+            </label>
+
+            <button id="preview-add-ability" type="button"
+              >Add custom tag</button
+            >
+
+            <button id="preview-token-abilities" type="button">
+              Add these tags to all creature tokens
+            </button>
+
+            <button id="preview-clear-abilities" type="button">
+              Clear this card’s tags
+            </button>
+
+            <p class="help">
+              Tags are manual reminders. The token button affects creature
+              tokens currently on the battlefield. Remove tags when their
+              effects end.
+            </p>
+          </fieldset>
 
           <label>
             Attach to
@@ -487,6 +527,7 @@ import Layout from "@/layouts/Layout.astro";
   type Pile = "library" | "graveyard" | "exile" | "group";
 
   interface PracticeCard {
+    abilityTags?: string[];
     instanceId: string;
     entry: Entry;
     zone: Zone;
@@ -545,6 +586,7 @@ import Layout from "@/layouts/Layout.astro";
 
   const hoverPreview = get<HTMLDivElement>("card-hover-preview");
   const hoverImage = get<HTMLImageElement>("card-hover-image");
+  const hoverAbilities = get<HTMLParagraphElement>("card-hover-abilities");
   const canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
 
   let hoverTimer: number | undefined;
@@ -568,41 +610,54 @@ import Layout from "@/layouts/Layout.astro";
       const src = imageOf(card);
       if (!src) return;
 
+      const abilities = card.abilityTags ?? [];
+
+      hoverAbilities.textContent = abilities.length
+        ? `Granted abilities: ${abilities.join(" · ")}`
+        : "";
+      hoverAbilities.hidden = !abilities.length;
+
       const margin = 12;
       const gap = 16;
-      const width = Math.min(
-        320,
-        window.innerWidth - margin * 2,
-        ((window.innerHeight - margin * 2) * 244) / 340,
-      );
-      const height = (width * 340) / 244;
+      const width = Math.min(320, window.innerWidth - margin * 2);
+
+      hoverImage.src = src;
+      hoverPreview.style.width = `${width}px`;
+      hoverPreview.style.height = "auto";
+      hoverPreview.style.visibility = "hidden";
+      hoverPreview.hidden = false;
+
+      const textHeight = abilities.length
+        ? hoverAbilities.getBoundingClientRect().height
+        : 0;
+
+      hoverImage.style.maxHeight = `${Math.max(40, window.innerHeight - margin * 2 - textHeight - 4)}px`;
+
+      const box = hoverPreview.getBoundingClientRect();
       const rect = trigger.getBoundingClientRect();
 
       let left = rect.right + gap;
 
-      if (left + width > window.innerWidth - margin) {
-        left = rect.left - width - gap;
+      if (left + box.width > window.innerWidth - margin) {
+        left = rect.left - box.width - gap;
       }
 
       left = Math.max(
         margin,
-        Math.min(left, window.innerWidth - width - margin),
+        Math.min(left, window.innerWidth - box.width - margin),
       );
 
       const top = Math.max(
         margin,
         Math.min(
-          rect.top + rect.height / 2 - height / 2,
-          window.innerHeight - height - margin,
+          rect.top + rect.height / 2 - box.height / 2,
+          window.innerHeight - box.height - margin,
         ),
       );
 
-      hoverImage.src = src;
-      hoverPreview.style.width = `${width}px`;
-      hoverPreview.style.height = `${height}px`;
       hoverPreview.style.left = `${left}px`;
       hoverPreview.style.top = `${top}px`;
-      hoverPreview.hidden = false;
+      hoverPreview.style.visibility = "visible";
     }, 180);
   }
 
@@ -986,6 +1041,18 @@ import Layout from "@/layouts/Layout.astro";
 
   type CreatureStat = "powerValue" | "toughnessValue";
 
+  get("preview-clear-pt").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || card.zone !== "battlefield") return;
+
+    delete card.powerValue;
+    delete card.toughnessValue;
+    render();
+
+    get("preview-feedback").textContent =
+      "Manual power/toughness cleared. Use the printed card values.";
+  });
+
   function saveCreatureStat(stat: CreatureStat, value: string) {
     const card = selectedCard();
     if (!card || card.zone !== "battlefield") return;
@@ -1058,6 +1125,141 @@ import Layout from "@/layouts/Layout.astro";
     adjustCreatureStat("toughnessValue", 1);
   });
 
+  const commonAbilities = [
+    "Vigilance",
+    "Flying",
+    "Haste",
+    "Trample",
+    "Deathtouch",
+    "Lifelink",
+    "Reach",
+    "First strike",
+    "Double strike",
+    "Menace",
+    "Hexproof",
+    "Indestructible",
+  ];
+
+  function renderAbilityOptions(card: PracticeCard) {
+    const container = get<HTMLDivElement>("preview-ability-options");
+    container.replaceChildren();
+
+    const choices = Array.from(
+      new Set([...commonAbilities, ...(card.abilityTags ?? [])]),
+    );
+
+    for (const ability of choices) {
+      const active = card.abilityTags?.includes(ability) ?? false;
+
+      const toggle = button(
+        ability,
+        () => {
+          const current = selectedCard();
+          if (!current || current.zone !== "battlefield") return;
+
+          const tags = new Set(current.abilityTags ?? []);
+
+          if (tags.has(ability)) {
+            tags.delete(ability);
+          } else {
+            tags.add(ability);
+          }
+
+          current.abilityTags = [...tags];
+          render();
+
+          const replacement = Array.from(
+            container.querySelectorAll<HTMLButtonElement>("button"),
+          ).find((item) => item.dataset.ability === ability);
+
+          replacement?.focus();
+        },
+        "ability-toggle",
+      );
+
+      toggle.dataset.ability = ability;
+      toggle.setAttribute("aria-pressed", String(active));
+      container.append(toggle);
+    }
+  }
+
+  get("preview-add-ability").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || card.zone !== "battlefield") return;
+
+    const input = get<HTMLInputElement>("preview-custom-ability");
+    const text = input.value.trim().replace(/\s+/g, " ").slice(0, 30);
+
+    if (!text) {
+      input.focus();
+      return;
+    }
+
+    const existing = [...commonAbilities, ...(card.abilityTags ?? [])].find(
+      (tag) => tag.toLowerCase() === text.toLowerCase(),
+    );
+
+    const ability = existing ?? text;
+
+    card.abilityTags = Array.from(
+      new Set([...(card.abilityTags ?? []), ability]),
+    );
+
+    input.value = "";
+    render();
+
+    get("preview-feedback").textContent =
+      `${ability} added to ${nameOf(card)}.`;
+  });
+
+  get("preview-clear-abilities").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || card.zone !== "battlefield") return;
+
+    card.abilityTags = [];
+    render();
+
+    get("preview-feedback").textContent =
+      "This card’s granted ability tags were cleared.";
+  });
+
+  get("preview-token-abilities").addEventListener("click", () => {
+    const source = selectedCard();
+    if (!source || source.zone !== "battlefield") return;
+
+    const tags = source.abilityTags ?? [];
+
+    if (!tags.length) {
+      get("preview-feedback").textContent =
+        "Select at least one ability tag first.";
+      return;
+    }
+
+    const targets = cards.filter((card) => {
+      const type =
+        card.entry.card_faces?.[card.face]?.type_line ||
+        card.entry.type_line ||
+        "";
+
+      return (
+        card.isToken && card.zone === "battlefield" && /\bCreature\b/.test(type)
+      );
+    });
+
+    for (const token of targets) {
+      token.abilityTags = Array.from(
+        new Set([...(token.abilityTags ?? []), ...tags]),
+      );
+    }
+
+    render();
+
+    const message = `Added ${tags.join(", ")} to ${targets.length} creature tokens.`;
+
+    get("preview-feedback").textContent = message;
+    announce(message);
+  });
+
   function announce(message: string) {
     status.textContent = message;
   }
@@ -1109,6 +1311,7 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   function resetCard(card: PracticeCard) {
+    card.abilityTags = [];
     delete card.powerValue;
     delete card.toughnessValue;
     card.tapped = false;
@@ -1467,6 +1670,41 @@ import Layout from "@/layouts/Layout.astro";
 
     item.append(shell);
 
+    if (card.zone === "battlefield" && card.abilityTags?.length) {
+      const abilities = card.abilityTags;
+      const tags = document.createElement("ul");
+      tags.className = "card-ability-tags";
+      tags.setAttribute("aria-label", "Granted abilities");
+
+      const tagItem = document.createElement("li");
+
+      const summary = button(
+        `${abilities[0]}${abilities.length > 1 ? " +" : ""}`,
+        () => openPreview(card, `${card.instanceId}:abilities`),
+        "ability-summary",
+      );
+
+      summary.dataset.focusKey = `${card.instanceId}:abilities`;
+      summary.setAttribute("aria-haspopup", "dialog");
+      summary.setAttribute(
+        "aria-label",
+        `View abilities: ${abilities.join(", ")}`,
+      );
+
+      summary.addEventListener("pointerenter", (event) => {
+        if (event.pointerType === "mouse") {
+          queueHoverPreview(card, summary);
+        }
+      });
+
+      summary.addEventListener("pointerleave", hideHoverPreview);
+      summary.addEventListener("pointerdown", hideHoverPreview);
+
+      tagItem.append(summary);
+      tags.append(tagItem);
+      item.append(tags);
+    }
+
     const attached = cards.filter(
       (child) =>
         child.attachedTo === card.instanceId && child.zone === "battlefield",
@@ -1679,6 +1917,14 @@ import Layout from "@/layouts/Layout.astro";
     get<HTMLInputElement>("preview-counters").value = String(card.counters);
     get("preview-tap").textContent = card.tapped ? "Untap" : "Tap";
     get("preview-detach").hidden = !card.attachedTo;
+    renderAbilityOptions(card);
+    const activeAbilities = get<HTMLParagraphElement>(
+      "preview-active-abilities",
+    );
+
+    activeAbilities.textContent = `Granted abilities: ${(card.abilityTags ?? []).join(", ")}`;
+
+    activeAbilities.hidden = !card.abilityTags?.length;
     get<HTMLInputElement>("preview-power").value = card.powerValue ?? "";
 
     get<HTMLInputElement>("preview-toughness").value =
@@ -2237,7 +2483,7 @@ import Layout from "@/layouts/Layout.astro";
   #card-hover-image {
     display: block;
     width: 100%;
-    height: 100%;
+    height: auto;
     object-fit: contain;
   }
 
@@ -2923,5 +3169,117 @@ import Layout from "@/layouts/Layout.astro";
   .pt-adjust button {
     padding: 0;
     font-size: 1.25rem;
+  }
+
+  .ability-controls {
+    display: grid;
+    gap: 0.6rem;
+    min-width: 0;
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+  }
+
+  .ability-controls legend {
+    padding: 0 0.3rem;
+    font-weight: 600;
+  }
+
+  .ability-controls input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ability-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .ability-options :global(.ability-toggle) {
+    min-height: 36px;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.4rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .ability-options :global(.ability-toggle[aria-pressed="true"]) {
+    border-color: var(--color-pyroduck-lime);
+    background: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-void);
+  }
+
+  .practice :global(.card-ability-tags) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    list-style: none;
+    margin: 0.3rem 0;
+    padding: 0;
+  }
+
+  .practice :global(.card-ability-tags li) {
+    max-width: 100%;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid var(--color-pyroduck-lime);
+    border-radius: 0.3rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    font-size: 0.65rem;
+    overflow-wrap: anywhere;
+  }
+
+  @media (pointer: coarse) {
+    .ability-options :global(.ability-toggle) {
+      min-height: 44px;
+    }
+  }
+
+  #card-hover-abilities {
+    margin: 0;
+    padding: 0.6rem;
+    border-top: 1px solid var(--color-pyroduck-plasma);
+    color: var(--color-pyroduck-lime);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  #card-hover-abilities[hidden] {
+    display: none !important;
+  }
+
+  .practice :global(.card-ability-tags li) {
+    padding: 0;
+    border: 0;
+  }
+
+  .practice :global(.ability-summary) {
+    display: block;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 0.2rem 0.35rem;
+    overflow: hidden;
+    border: 1px solid var(--color-pyroduck-lime);
+    border-radius: 0.3rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    font: inherit;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  @media (pointer: coarse) {
+    .practice :global(.ability-summary) {
+      min-height: 44px;
+    }
   }
 </style>
