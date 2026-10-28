@@ -11,6 +11,10 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       <p id="deck-status" role="status">Loading deck…</p>
       <p id="deck-count"></p>
 
+      <p class="mt-4">
+        <a id="goldfish-deck" href="/mtg/goldfish" hidden> Goldfish deck → </a>
+      </p>
+
       <form id="deck-settings" class="panel" hidden>
         <h2>Deck details</h2>
         <label>Deck name<input name="name" required maxlength="100" /></label>
@@ -383,6 +387,14 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   const proxy = get<HTMLInputElement>("picker-proxy");
   const save = get<HTMLButtonElement>("picker-save");
   const deckId = new URLSearchParams(location.search).get("id");
+  const goldfishLink = document.getElementById(
+    "goldfish-deck",
+  ) as HTMLAnchorElement;
+
+  if (deckId) {
+    goldfishLink.href = `/mtg/goldfish?id=${encodeURIComponent(deckId)}`;
+    goldfishLink.hidden = false;
+  }
   let deck: Deck | null = null;
   let owner = false;
   let busy = false;

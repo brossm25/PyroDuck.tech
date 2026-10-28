@@ -1,0 +1,2927 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout
+  title="Goldfish | BinderLink"
+  description="Practice a saved deck on a solo Commander playmat."
+>
+  <section
+    class="goldfish-page px-4 py-8 sm:px-6"
+    aria-labelledby="practice-heading"
+  >
+    <div class="practice">
+      <a id="practice-back" href="/mtg/decks">← Your decks</a>
+
+      <div class="page-heading">
+        <h1 id="practice-heading">Goldfish</h1>
+        <span class="solo-label">Solo practice</span>
+      </div>
+
+      <p class="help">
+        Click a battlefield card to tap or untap. Use its magnifier for a larger
+        view and actions. Effects are manual; refreshing ends the session.
+      </p>
+
+      <p id="practice-status" role="status" aria-live="polite">Loading deck…</p>
+
+      <div id="practice-table" hidden>
+        <section class="toolbar" aria-label="Practice controls">
+          <div class="toolbar-group">
+            <label>
+              Life
+              <input id="practice-life" type="number" value="40" />
+            </label>
+
+            <strong id="practice-turn-label">Turn 1</strong>
+
+            <button id="practice-draw" type="button">Draw</button>
+            <button id="practice-turn" type="button">Next turn</button>
+            <button id="practice-untap" type="button">Untap all</button>
+          </div>
+
+          <div class="toolbar-group">
+            <button id="practice-tokens" type="button">Tokens</button>
+            <button id="practice-search" type="button">Search library</button>
+            <button id="practice-shuffle" type="button">Shuffle</button>
+            <button id="practice-mulligan" type="button">Redraw 7</button>
+            <button id="practice-reset" type="button">Restart</button>
+
+            <label>
+              Side piles
+              <select id="practice-side">
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+              </select>
+            </label>
+
+            <label>
+              Card size
+              <input
+                id="practice-card-size"
+                type="range"
+                min="72"
+                max="150"
+                step="6"
+                value="108"
+              />
+            </label>
+          </div>
+        </section>
+
+        <details class="table-help">
+          <summary>Practice controls and mulligans</summary>
+          <p>
+            Next turn untaps your battlefield and draws one card. Redraw 7
+            returns only your hand to the library, shuffles, and draws seven.
+            For a London mulligan, use a card’s actions to put cards on the
+            bottom. Reveal marks a hand card for solo practice; there is no
+            opponent connected. Attachments and counters are managed manually.
+          </p>
+        </details>
+
+        <div
+          class="mat-scroll"
+          tabindex="0"
+          role="region"
+          aria-label="Playmat; scroll sideways on smaller screens"
+        >
+          <div id="practice-mat" class="playmat" data-side="right">
+            <div class="field" role="group" aria-label="Battlefield">
+              <section
+                class="mat-zone creature-zone"
+                aria-labelledby="creatures-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="creatures-heading">Creatures</h2>
+                  <span id="creatures-count"></span>
+                </div>
+                <ul id="practice-creatures" class="card-row"></ul>
+              </section>
+
+              <section
+                class="mat-zone permanent-zone"
+                aria-labelledby="permanents-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="permanents-heading">Artifacts & enchantments</h2>
+                  <span id="permanents-count"></span>
+                </div>
+                <ul id="practice-permanents" class="card-row"></ul>
+              </section>
+
+              <section
+                class="mat-zone land-zone"
+                aria-labelledby="lands-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="lands-heading">Lands</h2>
+                  <span id="lands-count"></span>
+                </div>
+                <ul id="practice-lands" class="card-row"></ul>
+              </section>
+            </div>
+
+            <aside class="side-zones" aria-label="Command zone and piles">
+              <section
+                class="mat-zone command-zone"
+                aria-labelledby="command-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="command-heading">Command zone</h2>
+                  <span id="command-count"></span>
+                </div>
+
+                <ul id="practice-command" class="command-cards"></ul>
+
+                <label class="tax-label">
+                  Commander tax
+                  <input
+                    id="practice-tax"
+                    type="number"
+                    min="0"
+                    step="2"
+                    value="0"
+                  />
+                </label>
+              </section>
+
+              <section
+                class="mat-zone library-zone"
+                aria-labelledby="library-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="library-heading">Library</h2>
+                  <span id="library-count"></span>
+                </div>
+
+                <button
+                  id="library-draw"
+                  class="library-back"
+                  type="button"
+                  aria-label="Draw the top card from your library"
+                >
+                  <span>BinderLink</span>
+                  <span class="library-symbol" aria-hidden="true">✦</span>
+                  <span>Click to draw</span>
+                </button>
+              </section>
+
+              <section
+                class="mat-zone graveyard-zone"
+                aria-labelledby="graveyard-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="graveyard-heading">Graveyard</h2>
+                  <span id="graveyard-count"></span>
+                </div>
+
+                <button
+                  id="graveyard-pile"
+                  class="pile-button"
+                  type="button"
+                  aria-haspopup="dialog"></button>
+              </section>
+
+              <section
+                class="mat-zone exile-zone"
+                aria-labelledby="exile-heading"
+              >
+                <div class="zone-heading">
+                  <h2 id="exile-heading">Exile</h2>
+                  <span id="exile-count"></span>
+                </div>
+
+                <button
+                  id="exile-pile"
+                  class="pile-button"
+                  type="button"
+                  aria-haspopup="dialog"></button>
+              </section>
+            </aside>
+          </div>
+        </div>
+
+        <section class="hand-zone" aria-labelledby="hand-heading">
+          <div class="zone-heading">
+            <h2 id="hand-heading">Your hand</h2>
+            <span id="hand-count"></span>
+          </div>
+
+          <ul id="practice-hand" class="hand-cards"></ul>
+        </section>
+
+        <p class="credits">
+          Practice never edits your saved deck. Card data and images:
+          <a
+            href="https://scryfall.com"
+            target="_blank"
+            rel="noopener noreferrer">Scryfall ↗</a
+          >.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div id="card-hover-preview" aria-hidden="true" hidden>
+    <img id="card-hover-image" alt="" width="488" height="680" />
+  </div>
+
+  <dialog
+    id="practice-preview"
+    class="card-dialog"
+    aria-labelledby="practice-preview-title"
+  >
+    <form method="dialog" class="dialog-close">
+      <button autofocus>Close ×</button>
+    </form>
+
+    <h2 id="practice-preview-title"></h2>
+
+    <div class="inspector-layout">
+      <div>
+        <img id="practice-preview-image" alt="" width="488" height="680" />
+        <p id="practice-image-fallback" hidden>No saved image for this face.</p>
+      </div>
+
+      <div class="inspector-controls">
+        <p id="practice-card-location"></p>
+
+        <button id="preview-flip" type="button" hidden>Flip face</button>
+
+        <label>
+          Move to
+          <select id="preview-destination">
+            <option value="">Choose a destination…</option>
+            <option value="battlefield">Battlefield · automatic row</option>
+            <option value="battlefield-tapped">Battlefield · tapped</option>
+            <option value="creatures">Battlefield · creatures row</option>
+            <option value="permanents">
+              Battlefield · artifacts / enchantments row
+            </option>
+            <option value="lands">Battlefield · lands row</option>
+            <option value="hand">Hand</option>
+            <option value="graveyard">Graveyard</option>
+            <option value="exile">Exile</option>
+            <option value="command">Command zone</option>
+            <option value="top">Library · top</option>
+            <option value="bottom">Library · bottom</option>
+          </select>
+        </label>
+
+        <button id="preview-move" type="button">Move card</button>
+        <button id="preview-reveal" type="button" hidden> Reveal card </button>
+
+        <div id="preview-battlefield" hidden>
+          <div class="pt-controls">
+            <label>
+              Power
+              <span class="pt-adjust">
+                <button
+                  id="power-minus"
+                  type="button"
+                  aria-label="Decrease power"
+                >
+                  −
+                </button>
+                <input
+                  id="preview-power"
+                  type="text"
+                  maxlength="12"
+                  placeholder="Set power"
+                  aria-label="Current power"
+                />
+                <button
+                  id="power-plus"
+                  type="button"
+                  aria-label="Increase power"
+                >
+                  +
+                </button>
+              </span>
+            </label>
+
+            <label>
+              Toughness
+              <span class="pt-adjust">
+                <button
+                  id="toughness-minus"
+                  type="button"
+                  aria-label="Decrease toughness"
+                >
+                  −
+                </button>
+                <input
+                  id="preview-toughness"
+                  type="text"
+                  maxlength="12"
+                  placeholder="Set toughness"
+                  aria-label="Current toughness"
+                />
+                <button
+                  id="toughness-plus"
+                  type="button"
+                  aria-label="Increase toughness"
+                >
+                  +
+                </button>
+              </span>
+            </label>
+          </div>
+
+          <p class="help">
+            Enter the current values, then adjust each independently. Variable
+            values such as * are manual. Counters do not automatically change
+            these values.
+          </p>
+
+          <label>
+            Counters
+            <input id="preview-counters" type="number" step="1" value="0" />
+          </label>
+
+          <button id="preview-tap" type="button">Tap</button>
+
+          <label>
+            Attach to
+            <select id="preview-attachment"></select>
+          </label>
+
+          <button id="preview-attach" type="button">Attach</button>
+          <button id="preview-detach" type="button" hidden>Detach</button>
+
+          <p class="help">
+            Choose attachments manually. Tapping a host does not tap its
+            attachments. Commander tax is tracked manually.
+          </p>
+        </div>
+
+        <p id="preview-feedback" role="status" aria-live="polite"></p>
+
+        <h3>Card text</h3>
+        <p id="preview-rules" class="rules"></p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="practice-pile" class="pile-dialog" aria-labelledby="pile-title">
+    <form method="dialog" class="dialog-close">
+      <button autofocus>Close ×</button>
+    </form>
+
+    <h2 id="pile-title"></h2>
+    <p id="pile-help" class="help"></p>
+
+    <div id="library-search-controls" class="library-search-controls" hidden>
+      <label>
+        Find a card
+        <input
+          id="library-query"
+          type="search"
+          placeholder="Card name or type…"
+        />
+      </label>
+
+      <label>
+        Show
+        <select id="library-filter">
+          <option value="all">All cards</option>
+          <option value="lands">Lands</option>
+          <option value="basic">Basic lands</option>
+        </select>
+      </label>
+
+      <button id="library-finish" type="button">
+        Shuffle & finish searching
+      </button>
+
+      <p class="help">
+        For Evolving Wilds: move it to your graveyard, find a basic land here,
+        choose Battlefield · tapped, then shuffle. Check each card’s search
+        restrictions yourself.
+      </p>
+    </div>
+
+    <ul id="pile-list" class="pile-list"></ul>
+  </dialog>
+  <dialog id="practice-token-picker" aria-labelledby="token-picker-title">
+    <form method="dialog" class="dialog-close">
+      <button autofocus>Close ×</button>
+    </form>
+
+    <h2 id="token-picker-title">Add tokens</h2>
+
+    <p class="help">
+      Search for a token such as Insect, Treasure, or Zombie. Check its power,
+      toughness, color, and abilities before adding it. Tokens are only added to
+      this practice session.
+    </p>
+
+    <form id="token-search-form" class="library-search-controls">
+      <label>
+        Token name or search
+        <input
+          id="token-query"
+          type="search"
+          placeholder="Try Insect"
+          maxlength="150"
+          required
+        />
+      </label>
+
+      <button id="token-search-button" type="submit"> Search tokens </button>
+
+      <label>
+        Copies to add
+        <input
+          id="token-quantity"
+          type="number"
+          min="1"
+          max="50"
+          step="1"
+          value="1"
+          required
+        />
+      </label>
+    </form>
+
+    <p id="token-search-status" role="status" aria-live="polite"></p>
+
+    <ul id="token-results" class="pile-list"></ul>
+
+    <div class="toolbar-group">
+      <button id="token-previous" type="button" disabled>
+        Previous results
+      </button>
+      <button id="token-next" type="button" disabled> Next results </button>
+    </div>
+  </dialog>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
+
+  interface SavedFace {
+    name: string;
+    image_url: string | null;
+    oracle_text: string;
+    type_line?: string | null;
+  }
+
+  interface Entry {
+    id: string;
+    name: string;
+    quantity: number;
+    card_role: string;
+    image_url: string | null;
+    oracle_text: string | null;
+    type_line: string | null;
+    card_faces: SavedFace[] | null;
+  }
+
+  type Zone =
+    "library" | "command" | "hand" | "battlefield" | "graveyard" | "exile";
+
+  type Lane = "creatures" | "permanents" | "lands";
+  type Pile = "library" | "graveyard" | "exile" | "group";
+
+  interface PracticeCard {
+    instanceId: string;
+    entry: Entry;
+    zone: Zone;
+    lane: Lane;
+    tapped: boolean;
+    face: number;
+    counters: number;
+    revealed: boolean;
+    attachedTo: string | null;
+    order: number;
+    isToken?: boolean;
+    powerValue?: string;
+    toughnessValue?: string;
+  }
+
+  const get = <T extends HTMLElement>(id: string) =>
+    document.getElementById(id) as T;
+
+  const status = get<HTMLParagraphElement>("practice-status");
+  const table = get<HTMLDivElement>("practice-table");
+  const mat = get<HTMLDivElement>("practice-mat");
+  const life = get<HTMLInputElement>("practice-life");
+  const tax = get<HTMLInputElement>("practice-tax");
+  const side = get<HTMLSelectElement>("practice-side");
+  const cardSize = get<HTMLInputElement>("practice-card-size");
+  const back = get<HTMLAnchorElement>("practice-back");
+  const deckId = new URLSearchParams(location.search).get("id");
+
+  const preview = get<HTMLDialogElement>("practice-preview");
+  const previewImage = get<HTMLImageElement>("practice-preview-image");
+  const destination = get<HTMLSelectElement>("preview-destination");
+  const attachment = get<HTMLSelectElement>("preview-attachment");
+  const pileDialog = get<HTMLDialogElement>("practice-pile");
+
+  const rows = {
+    creatures: get<HTMLUListElement>("practice-creatures"),
+    permanents: get<HTMLUListElement>("practice-permanents"),
+    lands: get<HTMLUListElement>("practice-lands"),
+    command: get<HTMLUListElement>("practice-command"),
+    hand: get<HTMLUListElement>("practice-hand"),
+  };
+
+  let entries: Entry[] = [];
+  let cards: PracticeCard[] = [];
+  let library: PracticeCard[] = [];
+  let turn = 1;
+  let sequence = 0;
+  let request = 0;
+  let viewer: string | null = null;
+  let ready = false;
+  let selectedId: string | null = null;
+  let returnKey: string | null = null;
+  let pileZone: Pile | null = null;
+  let groupIds: string[] = [];
+  let pileReturnFocus: HTMLButtonElement | null = null;
+
+  const hoverPreview = get<HTMLDivElement>("card-hover-preview");
+  const hoverImage = get<HTMLImageElement>("card-hover-image");
+  const canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
+
+  let hoverTimer: number | undefined;
+
+  function hideHoverPreview() {
+    window.clearTimeout(hoverTimer);
+    hoverPreview.hidden = true;
+    hoverImage.removeAttribute("src");
+  }
+
+  function queueHoverPreview(card: PracticeCard, trigger: HTMLElement) {
+    hideHoverPreview();
+
+    if (!canHover.matches || !ready) return;
+
+    hoverTimer = window.setTimeout(() => {
+      if (!ready || !trigger.isConnected || preview.open || pileDialog.open) {
+        return;
+      }
+
+      const src = imageOf(card);
+      if (!src) return;
+
+      const margin = 12;
+      const gap = 16;
+      const width = Math.min(
+        320,
+        window.innerWidth - margin * 2,
+        ((window.innerHeight - margin * 2) * 244) / 340,
+      );
+      const height = (width * 340) / 244;
+      const rect = trigger.getBoundingClientRect();
+
+      let left = rect.right + gap;
+
+      if (left + width > window.innerWidth - margin) {
+        left = rect.left - width - gap;
+      }
+
+      left = Math.max(
+        margin,
+        Math.min(left, window.innerWidth - width - margin),
+      );
+
+      const top = Math.max(
+        margin,
+        Math.min(
+          rect.top + rect.height / 2 - height / 2,
+          window.innerHeight - height - margin,
+        ),
+      );
+
+      hoverImage.src = src;
+      hoverPreview.style.width = `${width}px`;
+      hoverPreview.style.height = `${height}px`;
+      hoverPreview.style.left = `${left}px`;
+      hoverPreview.style.top = `${top}px`;
+      hoverPreview.hidden = false;
+    }, 180);
+  }
+
+  window.addEventListener("scroll", hideHoverPreview, true);
+  window.addEventListener("resize", hideHoverPreview);
+  window.addEventListener("blur", hideHoverPreview);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideHoverPreview();
+  });
+
+  interface TokenSearchCard {
+    id: string;
+    name: string;
+    type_line?: string;
+    oracle_text?: string;
+    power?: string;
+    toughness?: string;
+    colors?: string[];
+    image_uris?: {
+      normal?: string;
+    };
+    card_faces?: {
+      name: string;
+      type_line?: string;
+      oracle_text?: string;
+      image_uris?: {
+        normal?: string;
+      };
+    }[];
+  }
+
+  interface TokenSearchResponse {
+    data?: TokenSearchCard[];
+    has_more?: boolean;
+    details?: string;
+  }
+
+  const tokenDialog = get<HTMLDialogElement>("practice-token-picker");
+  const tokenForm = get<HTMLFormElement>("token-search-form");
+  const tokenQuery = get<HTMLInputElement>("token-query");
+  const tokenQuantity = get<HTMLInputElement>("token-quantity");
+  const tokenStatus = get<HTMLParagraphElement>("token-search-status");
+  const tokenResults = get<HTMLUListElement>("token-results");
+  const tokenSearchButton = get<HTMLButtonElement>("token-search-button");
+  const tokenPrevious = get<HTMLButtonElement>("token-previous");
+  const tokenNext = get<HTMLButtonElement>("token-next");
+
+  let tokenSearchVersion = 0;
+  let tokenAbortController: AbortController | null = null;
+  let tokenSearchBusy = false;
+  let tokenPage = 1;
+  let tokenHasMore = false;
+  let tokenSearchText = "";
+  let lastTokenRequestAt = 0;
+
+  function updateTokenButtons() {
+    tokenSearchButton.disabled = tokenSearchBusy;
+    tokenPrevious.disabled =
+      tokenSearchBusy || tokenPage <= 1 || !tokenSearchText;
+    tokenNext.disabled = tokenSearchBusy || !tokenHasMore;
+  }
+
+  function clearTokenPicker() {
+    tokenSearchVersion++;
+    tokenAbortController?.abort();
+    tokenAbortController = null;
+    tokenSearchBusy = false;
+    tokenHasMore = false;
+    tokenPage = 1;
+    tokenSearchText = "";
+    tokenResults.replaceChildren();
+    tokenStatus.textContent = "";
+    updateTokenButtons();
+
+    if (tokenDialog.open) tokenDialog.close();
+  }
+
+  function addPracticeTokens(
+    token: TokenSearchCard,
+    expectedSession: number,
+    expectedSearch: number,
+  ) {
+    if (
+      !ready ||
+      request !== expectedSession ||
+      tokenSearchVersion !== expectedSearch ||
+      !tokenDialog.open
+    ) {
+      return;
+    }
+
+    const amount = Number(tokenQuantity.value);
+
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 50) {
+      tokenStatus.textContent = "Choose a whole number from 1 to 50.";
+      tokenQuantity.focus();
+      return;
+    }
+
+    if (cards.length + amount > 10000) {
+      tokenStatus.textContent =
+        "This practice session has reached its card limit.";
+      return;
+    }
+
+    const stats =
+      token.power !== undefined && token.toughness !== undefined
+        ? `${token.power}/${token.toughness}`
+        : "";
+
+    const entry: Entry = {
+      id: `token:${token.id}`,
+      name: token.name,
+      quantity: 1,
+      card_role: "main",
+      image_url: safeImage(token.image_uris?.normal),
+      type_line: token.type_line || token.card_faces?.[0]?.type_line || "Token",
+      oracle_text: [stats, token.oracle_text || ""]
+        .filter(Boolean)
+        .join("\n\n"),
+      card_faces:
+        token.card_faces?.map((face) => ({
+          name: face.name,
+          image_url: safeImage(face.image_uris?.normal),
+          oracle_text: face.oracle_text || "",
+          type_line: face.type_line || null,
+        })) ?? null,
+    };
+
+    for (let index = 0; index < amount; index++) {
+      cards.push({
+        instanceId: `token:${crypto.randomUUID()}`,
+        entry,
+        zone: "battlefield",
+        lane: laneFor(entry),
+        tapped: false,
+        face: 0,
+        counters: 0,
+        revealed: false,
+        attachedTo: null,
+        order: ++sequence,
+        isToken: true,
+        powerValue: token.power,
+        toughnessValue: token.toughness,
+      });
+    }
+
+    render();
+
+    const message = `Added ${amount} × ${token.name} to the battlefield.`;
+
+    tokenStatus.textContent = message;
+    announce(message);
+  }
+
+  function renderTokenResults(
+    results: TokenSearchCard[],
+    expectedSession: number,
+    expectedSearch: number,
+  ) {
+    tokenResults.replaceChildren();
+
+    for (const token of results) {
+      const item = document.createElement("li");
+
+      const add = button(
+        "",
+        () => {
+          addPracticeTokens(token, expectedSession, expectedSearch);
+        },
+        "pile-card-button",
+      );
+
+      const src = safeImage(
+        token.image_uris?.normal || token.card_faces?.[0]?.image_uris?.normal,
+      );
+
+      if (src) {
+        const image = document.createElement("img");
+        image.src = src;
+        image.alt = token.name;
+        image.loading = "lazy";
+        image.width = 244;
+        image.height = 340;
+        add.append(image);
+      }
+
+      const name = document.createElement("strong");
+      name.textContent = token.name;
+
+      const description = document.createElement("span");
+      description.textContent = [
+        token.power !== undefined && token.toughness !== undefined
+          ? `${token.power}/${token.toughness}`
+          : "",
+        token.colors?.length ? token.colors.join("/") : "Colorless",
+        token.type_line || "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const action = document.createElement("span");
+      action.textContent = "Add to battlefield";
+
+      add.setAttribute(
+        "aria-label",
+        `Add ${token.name}: ${description.textContent}`,
+      );
+
+      add.append(name, description, action);
+      item.append(add);
+      tokenResults.append(item);
+    }
+  }
+
+  async function searchTokens(page: number, query: string) {
+    if (!ready || !tokenDialog.open || tokenSearchBusy) return;
+
+    const text = query.trim();
+
+    if (!text) {
+      tokenStatus.textContent = "Enter a token name first.";
+      return;
+    }
+
+    if (Date.now() - lastTokenRequestAt < 600) {
+      tokenStatus.textContent = "Please wait a moment before searching again.";
+      return;
+    }
+
+    lastTokenRequestAt = Date.now();
+
+    const active = ++tokenSearchVersion;
+    const expectedSession = request;
+
+    tokenAbortController?.abort();
+    const controller = new AbortController();
+    tokenAbortController = controller;
+
+    tokenSearchBusy = true;
+    tokenHasMore = false;
+    tokenResults.replaceChildren();
+    tokenStatus.textContent = "Searching tokens…";
+    updateTokenButtons();
+
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const url = new URL("https://api.scryfall.com/cards/search");
+      url.searchParams.set("q", `t:token (${text})`);
+      url.searchParams.set("include_extras", "true");
+      url.searchParams.set("unique", "art");
+      url.searchParams.set("order", "name");
+      url.searchParams.set("page", String(page));
+
+      const response = await fetch(url.href, {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (
+        active !== tokenSearchVersion ||
+        expectedSession !== request ||
+        !ready ||
+        !tokenDialog.open
+      ) {
+        return;
+      }
+
+      if (response.status === 404) {
+        tokenStatus.textContent =
+          "No matching tokens. Try Insect, Treasure, or Zombie.";
+        return;
+      }
+
+      if (response.status === 429) {
+        throw new Error(
+          "Token searches are temporarily limited. Wait a minute before trying again.",
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error("Couldn’t search tokens. Please try again shortly.");
+      }
+
+      const result = (await response.json()) as TokenSearchResponse;
+
+      if (
+        active !== tokenSearchVersion ||
+        expectedSession !== request ||
+        !ready ||
+        !tokenDialog.open
+      ) {
+        return;
+      }
+
+      if (!Array.isArray(result.data)) {
+        throw new Error("The token search returned an unexpected response.");
+      }
+
+      const matches = result.data.filter((token) =>
+        /\bToken\b/i.test(
+          token.type_line || token.card_faces?.[0]?.type_line || "",
+        ),
+      );
+
+      tokenPage = page;
+      tokenSearchText = text;
+      tokenHasMore = result.has_more === true;
+
+      renderTokenResults(matches, expectedSession, active);
+
+      tokenStatus.textContent = matches.length
+        ? `Page ${page}: ${matches.length} token options. Choose the correct version to add it.`
+        : "No matching tokens on this page.";
+    } catch (error) {
+      if (
+        active !== tokenSearchVersion ||
+        expectedSession !== request ||
+        !ready ||
+        !tokenDialog.open
+      ) {
+        return;
+      }
+
+      tokenStatus.textContent = controller.signal.aborted
+        ? "The search took too long. Please try again."
+        : error instanceof Error
+          ? error.message
+          : "Couldn’t search tokens.";
+    } finally {
+      window.clearTimeout(timeout);
+
+      if (active === tokenSearchVersion) {
+        tokenSearchBusy = false;
+        tokenAbortController = null;
+        updateTokenButtons();
+      }
+    }
+  }
+
+  get("practice-tokens").addEventListener("click", () => {
+    if (!ready) return;
+
+    hideHoverPreview();
+    clearTokenPicker();
+    tokenQuantity.value = "1";
+    tokenDialog.showModal();
+    tokenQuery.focus();
+  });
+
+  tokenForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    if (!tokenForm.reportValidity()) return;
+    void searchTokens(1, tokenQuery.value);
+  });
+
+  tokenPrevious.addEventListener("click", () => {
+    if (tokenPage > 1) {
+      void searchTokens(tokenPage - 1, tokenSearchText);
+    }
+  });
+
+  tokenNext.addEventListener("click", () => {
+    if (tokenHasMore) {
+      void searchTokens(tokenPage + 1, tokenSearchText);
+    }
+  });
+
+  tokenDialog.addEventListener("close", () => {
+    clearTokenPicker();
+
+    if (ready) {
+      get<HTMLButtonElement>("practice-tokens").focus();
+    }
+  });
+
+  type CreatureStat = "powerValue" | "toughnessValue";
+
+  function saveCreatureStat(stat: CreatureStat, value: string) {
+    const card = selectedCard();
+    if (!card || card.zone !== "battlefield") return;
+
+    const text = value.trim().slice(0, 12);
+
+    if (text) {
+      card[stat] = text;
+    } else {
+      delete card[stat];
+    }
+
+    render();
+  }
+
+  function adjustCreatureStat(stat: CreatureStat, adjustment: number) {
+    const card = selectedCard();
+    if (!card || card.zone !== "battlefield") return;
+
+    const current = card[stat]?.trim() ?? "";
+    const number = Number(current);
+    const next = number + adjustment;
+    const label = stat === "powerValue" ? "power" : "toughness";
+
+    if (
+      !/^-?\d+$/.test(current) ||
+      !Number.isSafeInteger(number) ||
+      !Number.isSafeInteger(next)
+    ) {
+      get("preview-feedback").textContent =
+        `Enter a numeric ${label} first. Variable values are edited manually.`;
+      return;
+    }
+
+    card[stat] = String(next);
+    render();
+
+    const message = `${nameOf(card)}: ${label} is now ${next}.`;
+    get("preview-feedback").textContent = message;
+    announce(message);
+  }
+
+  get<HTMLInputElement>("preview-power").addEventListener("change", (event) => {
+    saveCreatureStat("powerValue", (event.target as HTMLInputElement).value);
+  });
+
+  get<HTMLInputElement>("preview-toughness").addEventListener(
+    "change",
+    (event) => {
+      saveCreatureStat(
+        "toughnessValue",
+        (event.target as HTMLInputElement).value,
+      );
+    },
+  );
+
+  get("power-minus").addEventListener("click", () => {
+    adjustCreatureStat("powerValue", -1);
+  });
+
+  get("power-plus").addEventListener("click", () => {
+    adjustCreatureStat("powerValue", 1);
+  });
+
+  get("toughness-minus").addEventListener("click", () => {
+    adjustCreatureStat("toughnessValue", -1);
+  });
+
+  get("toughness-plus").addEventListener("click", () => {
+    adjustCreatureStat("toughnessValue", 1);
+  });
+
+  function announce(message: string) {
+    status.textContent = message;
+  }
+
+  function safeImage(value: string | null | undefined) {
+    if (!value) return null;
+
+    try {
+      const url = new URL(value);
+
+      if (
+        url.protocol === "https:" &&
+        (url.hostname === "scryfall.io" ||
+          url.hostname.endsWith(".scryfall.io"))
+      ) {
+        return url.href;
+      }
+    } catch {
+      // Display the card name when its image is unavailable.
+    }
+
+    return null;
+  }
+
+  function nameOf(card: PracticeCard) {
+    return card.entry.card_faces?.[card.face]?.name || card.entry.name;
+  }
+
+  function imageOf(card: PracticeCard) {
+    return safeImage(
+      card.entry.card_faces?.[card.face]?.image_url ||
+        (card.face === 0 ? card.entry.image_url : null),
+    );
+  }
+
+  function laneFor(entry: Entry): Lane {
+    const type = entry.card_faces?.[0]?.type_line || entry.type_line || "";
+
+    if (/\bLand\b/.test(type)) return "lands";
+    if (/\bCreature\b/.test(type)) return "creatures";
+    return "permanents";
+  }
+
+  function shuffle(items: PracticeCard[]) {
+    for (let index = items.length - 1; index > 0; index--) {
+      const target = Math.floor(Math.random() * (index + 1));
+      [items[index], items[target]] = [items[target], items[index]];
+    }
+  }
+
+  function resetCard(card: PracticeCard) {
+    delete card.powerValue;
+    delete card.toughnessValue;
+    card.tapped = false;
+    card.face = 0;
+    card.counters = 0;
+    card.revealed = false;
+    card.attachedTo = null;
+    card.lane = laneFor(card.entry);
+  }
+
+  function contents(zone: Zone) {
+    return cards
+      .filter((card) => card.zone === zone)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  function draw(amount: number) {
+    let drawn = 0;
+
+    while (drawn < amount && library.length) {
+      const card = library.pop()!;
+      resetCard(card);
+      card.zone = "hand";
+      card.order = ++sequence;
+      drawn++;
+    }
+
+    return drawn;
+  }
+
+  function startSession() {
+    closeDialogs();
+    sequence = 0;
+
+    cards = entries.flatMap((entry) =>
+      Array.from({ length: entry.quantity }, (_, index): PracticeCard => ({
+        instanceId: `${entry.id}:${index}`,
+        entry,
+        zone: entry.card_role === "commander" ? "command" : "library",
+        lane: laneFor(entry),
+        tapped: false,
+        face: 0,
+        counters: 0,
+        revealed: false,
+        attachedTo: null,
+        order: ++sequence,
+      })),
+    );
+
+    library = cards.filter((card) => card.zone === "library");
+    shuffle(library);
+    turn = 1;
+    life.value = "40";
+    tax.value = "0";
+
+    const drawn = draw(7);
+    render();
+    announce(`Session started. Drew ${drawn} cards.`);
+  }
+
+  function detachChildren(card: PracticeCard) {
+    for (const child of cards) {
+      if (child.attachedTo === card.instanceId) {
+        child.attachedTo = null;
+      }
+    }
+  }
+
+  function moveCard(card: PracticeCard, target: string) {
+    const allowed = [
+      "battlefield",
+      "battlefield-tapped",
+      "creatures",
+      "permanents",
+      "lands",
+      "hand",
+      "graveyard",
+      "exile",
+      "command",
+      "top",
+      "bottom",
+    ];
+
+    if (!allowed.includes(target)) return;
+
+    const battlefieldDestinations = [
+      "battlefield",
+      "battlefield-tapped",
+      "creatures",
+      "permanents",
+      "lands",
+    ];
+
+    if (card.isToken && !battlefieldDestinations.includes(target)) {
+      detachChildren(card);
+
+      cards = cards.filter((item) => item.instanceId !== card.instanceId);
+
+      render();
+      announce(`${nameOf(card)} left the battlefield and ceased to exist.`);
+      return;
+    }
+
+    const entersField = [
+      "battlefield",
+      "battlefield-tapped",
+      "creatures",
+      "permanents",
+      "lands",
+    ].includes(target);
+
+    const staysOnField = card.zone === "battlefield" && entersField;
+
+    if (!staysOnField) {
+      detachChildren(card);
+      resetCard(card);
+      card.order = ++sequence;
+    }
+
+    library = library.filter((item) => item.instanceId !== card.instanceId);
+
+    if (target === "top" || target === "bottom") {
+      card.zone = "library";
+
+      if (target === "top") {
+        library.push(card);
+      } else {
+        library.unshift(card);
+      }
+    } else if (entersField) {
+      card.zone = "battlefield";
+
+      if (["creatures", "permanents", "lands"].includes(target)) {
+        card.lane = target as Lane;
+        card.attachedTo = null;
+      }
+
+      if (target === "battlefield-tapped") {
+        card.tapped = true;
+      }
+    } else {
+      card.zone = target as Zone;
+    }
+
+    render();
+
+    const label =
+      target === "top" || target === "bottom"
+        ? `${target} of library`
+        : entersField
+          ? `battlefield${card.tapped ? " tapped" : ""}`
+          : target;
+
+    announce(`${nameOf(card)} moved to ${label}.`);
+  }
+
+  function attachCard(source: PracticeCard, targetId: string) {
+    const host = cards.find((card) => card.instanceId === targetId);
+
+    if (
+      !host ||
+      host === source ||
+      host.zone !== "battlefield" ||
+      source.zone !== "battlefield" ||
+      host.attachedTo
+    ) {
+      return false;
+    }
+
+    // Keep attachments one layer deep.
+    detachChildren(source);
+    source.attachedTo = host.instanceId;
+    source.revealed = false;
+    return true;
+  }
+
+  function focusKey(key: string | null) {
+    if (!key) return;
+
+    const target = Array.from(
+      table.querySelectorAll<HTMLButtonElement>("[data-focus-key]"),
+    ).find((item) => item.dataset.focusKey === key);
+
+    if (target) {
+      target.focus();
+    } else {
+      get<HTMLButtonElement>("practice-draw").focus();
+    }
+  }
+
+  function button(label: string, action: () => void, className = "") {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.textContent = label;
+    element.className = className;
+    element.addEventListener("click", action);
+    return element;
+  }
+
+  function iconButton(
+    kind: "zoom" | "flip",
+    label: string,
+    action: () => void,
+  ) {
+    const element = button("", action, "card-icon");
+    element.setAttribute("aria-label", label);
+    element.title = label;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("aria-hidden", "true");
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+    path.setAttribute(
+      "d",
+      kind === "zoom"
+        ? "M21 21l-6-6M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0M7 10h6M10 7v6"
+        : "M4 8h14l-4-4M20 16H6l4 4M4 8v8M20 16V8",
+    );
+
+    svg.append(path);
+    element.append(svg);
+    return element;
+  }
+
+  function addImage(parent: HTMLElement, card: PracticeCard) {
+    const src = imageOf(card);
+
+    if (src) {
+      const image = document.createElement("img");
+      image.src = src;
+      image.alt = nameOf(card);
+      image.loading = "lazy";
+      image.width = 244;
+      image.height = 340;
+      parent.append(image);
+    } else {
+      const text = document.createElement("span");
+      text.className = "card-fallback";
+      text.textContent = nameOf(card);
+      parent.append(text);
+    }
+  }
+
+  function toggleTap(card: PracticeCard) {
+    if (!ready || card.zone !== "battlefield") return;
+
+    card.tapped = !card.tapped;
+    render();
+
+    announce(`${nameOf(card)} ${card.tapped ? "tapped" : "untapped"}.`);
+  }
+
+  function renderCard(card: PracticeCard) {
+    const item = document.createElement("li");
+    item.className = "table-card";
+
+    const shell = document.createElement("div");
+    shell.className = "card-shell";
+    shell.classList.toggle("is-tapped", card.tapped);
+
+    const art = button(
+      "",
+      () => {
+        if (card.zone === "battlefield") {
+          toggleTap(card);
+          focusKey(`${card.instanceId}:art`);
+        } else {
+          openPreview(card, `${card.instanceId}:art`);
+        }
+      },
+      "card-art-button",
+    );
+
+    art.dataset.focusKey = `${card.instanceId}:art`;
+    art.setAttribute(
+      "aria-label",
+      card.zone === "battlefield"
+        ? `${card.tapped ? "Untap" : "Tap"} ${nameOf(card)}`
+        : `Inspect ${nameOf(card)}`,
+    );
+
+    if (card.zone === "battlefield") {
+      art.setAttribute("aria-pressed", String(card.tapped));
+    } else {
+      art.setAttribute("aria-haspopup", "dialog");
+    }
+
+    addImage(art, card);
+
+    art.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "mouse") {
+        queueHoverPreview(card, art);
+      }
+    });
+
+    art.addEventListener("pointerleave", hideHoverPreview);
+    art.addEventListener("pointerdown", hideHoverPreview);
+
+    shell.append(art);
+
+    const tools = document.createElement("div");
+    tools.className = "card-tools";
+
+    const zoom = iconButton("zoom", `Enlarge and manage ${nameOf(card)}`, () =>
+      openPreview(card, `${card.instanceId}:zoom`),
+    );
+
+    zoom.dataset.focusKey = `${card.instanceId}:zoom`;
+    zoom.setAttribute("aria-haspopup", "dialog");
+    tools.append(zoom);
+
+    if ((card.entry.card_faces?.length ?? 0) > 1) {
+      const flip = iconButton("flip", `Flip ${nameOf(card)}`, () => {
+        card.face = (card.face + 1) % card.entry.card_faces!.length;
+        render();
+        focusKey(`${card.instanceId}:flip`);
+        announce(`Showing ${nameOf(card)}.`);
+      });
+
+      flip.dataset.focusKey = `${card.instanceId}:flip`;
+      tools.append(flip);
+    }
+
+    shell.append(tools);
+
+    if (
+      card.isToken ||
+      card.revealed ||
+      card.counters ||
+      card.tapped ||
+      card.powerValue !== undefined ||
+      card.toughnessValue !== undefined
+    ) {
+      const badges = document.createElement("span");
+      badges.className = "card-badges";
+      badges.textContent = [
+        card.powerValue !== undefined || card.toughnessValue !== undefined
+          ? `${card.powerValue ?? "?"}/${card.toughnessValue ?? "?"}`
+          : "",
+        card.isToken ? "Token" : "",
+        card.revealed ? "Revealed" : "",
+        card.counters ? `${card.counters} counters` : "",
+        card.tapped ? "Tapped" : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      shell.append(badges);
+    }
+
+    item.append(shell);
+
+    const attached = cards.filter(
+      (child) =>
+        child.attachedTo === card.instanceId && child.zone === "battlefield",
+    );
+
+    if (attached.length) {
+      const stack = document.createElement("ul");
+      stack.className = "attachment-stack";
+      stack.setAttribute("aria-label", `Attachments on ${nameOf(card)}`);
+
+      for (const child of attached) {
+        const row = document.createElement("li");
+        const edge = button(
+          `${child.tapped ? "↷ " : ""}${nameOf(child)}`,
+          () => openPreview(child, `${child.instanceId}:attachment`),
+          "attachment-edge",
+        );
+
+        edge.dataset.focusKey = `${child.instanceId}:attachment`;
+        edge.setAttribute(
+          "aria-label",
+          `Inspect ${nameOf(child)}, attached to ${nameOf(card)}`,
+        );
+        edge.setAttribute("aria-haspopup", "dialog");
+
+        row.append(edge);
+        stack.append(row);
+      }
+
+      item.append(stack);
+    }
+
+    return item;
+  }
+
+  function fillRow(key: keyof typeof rows, list: PracticeCard[]) {
+    rows[key].replaceChildren();
+
+    const groups = new Map<string, PracticeCard[]>();
+
+    for (const card of list) {
+      const type = card.entry.type_line || "";
+      const hasAttachments = cards.some(
+        (child) => child.attachedTo === card.instanceId,
+      );
+
+      const canGroup =
+        key === "lands" &&
+        /\bBasic\b/.test(type) &&
+        /\bLand\b/.test(type) &&
+        !hasAttachments;
+
+      const groupKey = canGroup
+        ? JSON.stringify([
+            card.entry.name,
+            imageOf(card),
+            card.face,
+            card.tapped,
+            card.counters,
+          ])
+        : card.instanceId;
+
+      const group = groups.get(groupKey) ?? [];
+      group.push(card);
+      groups.set(groupKey, group);
+    }
+
+    for (const group of groups.values()) {
+      const item = renderCard(group[0]);
+
+      if (group.length > 1) {
+        item.classList.add("land-stack");
+
+        const inspectStack = button(
+          `×${group.length} · view stack`,
+          () => {
+            groupIds = group.map((card) => card.instanceId);
+            pileZone = "group";
+            pileReturnFocus = inspectStack;
+            renderPileList();
+            pileDialog.showModal();
+          },
+          "stack-count",
+        );
+
+        inspectStack.setAttribute(
+          "aria-label",
+          `View ${group.length} copies of ${nameOf(group[0])}. Clicking the card taps one copy.`,
+        );
+        inspectStack.setAttribute("aria-haspopup", "dialog");
+        item.append(inspectStack);
+      }
+
+      rows[key].append(item);
+    }
+
+    if (!list.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty-zone";
+      empty.textContent = key === "hand" ? "Your hand is empty" : "No cards";
+      rows[key].append(empty);
+    }
+
+    get(`${key}-count`).textContent = String(list.length);
+  }
+
+  function renderPile(zone: "graveyard" | "exile") {
+    const list = contents(zone);
+    const top = list[list.length - 1];
+    const pile = get<HTMLButtonElement>(`${zone}-pile`);
+
+    pile.replaceChildren();
+    pile.disabled = !top;
+    pile.setAttribute("aria-label", `View ${zone}, ${list.length} cards`);
+
+    if (top) {
+      addImage(pile, top);
+    } else {
+      pile.textContent = "Empty";
+    }
+
+    get(`${zone}-count`).textContent = String(list.length);
+  }
+
+  function render() {
+    hideHoverPreview();
+    const field = contents("battlefield");
+
+    for (const lane of ["creatures", "permanents", "lands"] as const) {
+      fillRow(
+        lane,
+        field.filter((card) => !card.attachedTo && card.lane === lane),
+      );
+    }
+
+    fillRow("command", contents("command"));
+    fillRow("hand", contents("hand"));
+
+    get("practice-turn-label").textContent = `Turn ${turn}`;
+    get("library-count").textContent = String(library.length);
+    get<HTMLButtonElement>("library-draw").disabled = !library.length;
+
+    renderPile("graveyard");
+    renderPile("exile");
+
+    if (pileDialog.open && pileZone) renderPileList();
+    if (preview.open) updateInspector();
+  }
+
+  function selectedCard() {
+    return ready
+      ? cards.find((card) => card.instanceId === selectedId)
+      : undefined;
+  }
+
+  function openPreview(card: PracticeCard, key: string | null) {
+    hideHoverPreview();
+    if (!ready) return;
+
+    selectedId = card.instanceId;
+    returnKey = key;
+    get("preview-feedback").textContent = "";
+    updateInspector();
+
+    if (!preview.open) preview.showModal();
+  }
+
+  function updateInspector() {
+    const card = selectedCard();
+    if (!card) return;
+
+    const face = card.entry.card_faces?.[card.face];
+    const src = imageOf(card);
+
+    get("practice-preview-title").textContent = nameOf(card);
+    previewImage.hidden = !src;
+
+    if (src) {
+      previewImage.src = src;
+    } else {
+      previewImage.removeAttribute("src");
+    }
+
+    previewImage.alt = nameOf(card);
+    get("practice-image-fallback").hidden = !!src;
+
+    const host = cards.find((item) => item.instanceId === card.attachedTo);
+
+    const location =
+      card.zone === "battlefield"
+        ? `${card.lane} row · ${card.tapped ? "tapped" : "untapped"}`
+        : card.zone;
+
+    get("practice-card-location").textContent =
+      location + (host ? ` · attached to ${nameOf(host)}` : "");
+
+    get("preview-rules").textContent =
+      face?.oracle_text || card.entry.oracle_text || "No saved card text.";
+
+    get("preview-flip").hidden = (card.entry.card_faces?.length ?? 0) < 2;
+
+    const reveal = get<HTMLButtonElement>("preview-reveal");
+    reveal.hidden = card.zone !== "hand";
+    reveal.textContent = card.revealed
+      ? "Stop revealing"
+      : "Reveal card · solo marker";
+    reveal.setAttribute("aria-pressed", String(card.revealed));
+
+    get("preview-battlefield").hidden = card.zone !== "battlefield";
+    get<HTMLInputElement>("preview-counters").value = String(card.counters);
+    get("preview-tap").textContent = card.tapped ? "Untap" : "Tap";
+    get("preview-detach").hidden = !card.attachedTo;
+    get<HTMLInputElement>("preview-power").value = card.powerValue ?? "";
+
+    get<HTMLInputElement>("preview-toughness").value =
+      card.toughnessValue ?? "";
+
+    destination.value = "";
+    attachment.replaceChildren();
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a battlefield card…";
+    attachment.append(placeholder);
+
+    contents("battlefield")
+      .filter((item) => item !== card && !item.attachedTo)
+      .forEach((item, index) => {
+        const option = document.createElement("option");
+        option.value = item.instanceId;
+        option.textContent = `${nameOf(item)} · ${index + 1}`;
+        attachment.append(option);
+      });
+  }
+
+  preview.addEventListener("close", () => {
+    selectedId = null;
+    previewImage.removeAttribute("src");
+    get("preview-rules").textContent = "";
+
+    if (ready) {
+      if (pileDialog.open) {
+        pileDialog
+          .querySelector<HTMLButtonElement>(
+            ".pile-card-button, .dialog-close button",
+          )
+          ?.focus();
+      } else {
+        focusKey(returnKey);
+      }
+    }
+
+    returnKey = null;
+  });
+
+  get("preview-flip").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || !card.entry.card_faces?.length) return;
+
+    card.face = (card.face + 1) % card.entry.card_faces.length;
+    render();
+  });
+
+  get("preview-move").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || !destination.value) return;
+
+    moveCard(card, destination.value);
+    preview.close();
+  });
+
+  get("preview-reveal").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card || card.zone !== "hand") return;
+
+    card.revealed = !card.revealed;
+    render();
+
+    const message =
+      `${nameOf(card)} ` +
+      (card.revealed
+        ? "marked as revealed for solo practice."
+        : "no longer revealed.");
+
+    announce(message);
+    get("preview-feedback").textContent = message;
+  });
+
+  get("preview-tap").addEventListener("click", () => {
+    const card = selectedCard();
+    if (card) toggleTap(card);
+  });
+
+  get<HTMLInputElement>("preview-counters").addEventListener(
+    "change",
+    (event) => {
+      const card = selectedCard();
+      if (!card || card.zone !== "battlefield") return;
+
+      const value = Number((event.target as HTMLInputElement).value);
+      card.counters = Number.isSafeInteger(value) ? value : 0;
+      render();
+    },
+  );
+
+  get("preview-attach").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card) return;
+
+    if (!attachCard(card, attachment.value)) {
+      get("preview-feedback").textContent =
+        "Choose another unattached battlefield card.";
+      return;
+    }
+
+    const host = cards.find((item) => item.instanceId === card.attachedTo)!;
+
+    render();
+    announce(`${nameOf(card)} attached to ${nameOf(host)}.`);
+    preview.close();
+  });
+
+  get("preview-detach").addEventListener("click", () => {
+    const card = selectedCard();
+    if (!card) return;
+
+    card.attachedTo = null;
+    render();
+    announce(`${nameOf(card)} detached.`);
+    preview.close();
+  });
+
+  function renderPileList() {
+    if (!pileZone) return;
+
+    const searching = pileZone === "library";
+    const grouped = pileZone === "group";
+
+    const pileCards = grouped
+      ? cards.filter(
+          (card) =>
+            groupIds.includes(card.instanceId) && card.zone === "battlefield",
+        )
+      : contents(pileZone as Zone);
+
+    const title = searching
+      ? "Search library"
+      : grouped
+        ? "Land stack"
+        : pileZone === "graveyard"
+          ? "Graveyard"
+          : "Exile";
+
+    get("pile-title").textContent = `${title} · ${pileCards.length}`;
+    get("library-search-controls").hidden = !searching;
+
+    get("pile-help").textContent = searching
+      ? "Choose a card, then use Move to. Results are alphabetical, not library order."
+      : grouped
+        ? "Choose an individual land to inspect, tap, or move. Clicking the stack’s card on the mat taps one copy."
+        : "Newest cards first. Choose a card to inspect it or move it.";
+
+    const query = get<HTMLInputElement>("library-query")
+      .value.trim()
+      .toLowerCase();
+    const filter = get<HTMLSelectElement>("library-filter").value;
+
+    const visible = searching
+      ? library
+          .filter((card) => {
+            const type =
+              card.entry.type_line ||
+              card.entry.card_faces?.[0]?.type_line ||
+              "";
+
+            const matchesQuery = `${card.entry.name} ${type}`
+              .toLowerCase()
+              .includes(query);
+
+            const matchesFilter =
+              filter === "all" ||
+              (/\bLand\b/.test(type) &&
+                (filter !== "basic" || /\bBasic\b/.test(type)));
+
+            return matchesQuery && matchesFilter;
+          })
+          .slice()
+          .sort((a, b) => a.entry.name.localeCompare(b.entry.name))
+      : pileCards.slice().reverse();
+
+    const list = get<HTMLUListElement>("pile-list");
+    list.replaceChildren();
+
+    for (const card of visible) {
+      const item = document.createElement("li");
+      const choose = button(
+        "",
+        () => openPreview(card, null),
+        "pile-card-button",
+      );
+
+      choose.setAttribute("aria-haspopup", "dialog");
+      addImage(choose, card);
+
+      const title = document.createElement("span");
+      title.textContent =
+        nameOf(card) +
+        (card.zone === "battlefield"
+          ? card.tapped
+            ? " · tapped"
+            : " · untapped"
+          : "");
+
+      choose.append(title);
+      item.append(choose);
+      list.append(item);
+    }
+
+    if (!list.childElementCount) {
+      const empty = document.createElement("li");
+      empty.textContent = searching
+        ? "No matching cards. Try another name or filter."
+        : "No cards here.";
+      list.append(empty);
+    }
+  }
+
+  for (const zone of ["graveyard", "exile"] as const) {
+    const trigger = get<HTMLButtonElement>(`${zone}-pile`);
+
+    trigger.addEventListener("click", () => {
+      if (!ready) return;
+
+      pileZone = zone;
+      pileReturnFocus = trigger;
+      renderPileList();
+      pileDialog.showModal();
+    });
+  }
+
+  get("practice-search").addEventListener("click", () => {
+    if (!ready) return;
+
+    pileZone = "library";
+    pileReturnFocus = get<HTMLButtonElement>("practice-search");
+    get<HTMLInputElement>("library-query").value = "";
+    get<HTMLSelectElement>("library-filter").value = "all";
+
+    renderPileList();
+    pileDialog.showModal();
+    get<HTMLInputElement>("library-query").focus();
+  });
+
+  get("library-query").addEventListener("input", renderPileList);
+  get("library-filter").addEventListener("change", renderPileList);
+
+  get("library-finish").addEventListener("click", () => {
+    if (!ready || pileZone !== "library") return;
+
+    shuffle(library);
+    pileDialog.close();
+    announce("Library shuffled. Search finished.");
+  });
+
+  pileDialog.addEventListener("close", () => {
+    pileZone = null;
+
+    if (ready) {
+      if (pileReturnFocus?.isConnected) {
+        pileReturnFocus.focus();
+      } else {
+        get<HTMLButtonElement>("practice-draw").focus();
+      }
+    }
+
+    pileReturnFocus = null;
+  });
+
+  function closeDialogs() {
+    hideHoverPreview();
+    clearTokenPicker();
+    selectedId = null;
+    returnKey = null;
+
+    if (preview.open) preview.close();
+    if (pileDialog.open) pileDialog.close();
+
+    previewImage.removeAttribute("src");
+    get("preview-rules").textContent = "";
+    get("practice-preview-title").textContent = "";
+    get("practice-card-location").textContent = "";
+    attachment.replaceChildren();
+    get("pile-list").replaceChildren();
+    get("pile-title").textContent = "";
+  }
+
+  function drawOne() {
+    if (!ready) return;
+
+    const drawn = draw(1);
+    render();
+    announce(drawn ? "Drew a card." : "Your library is empty.");
+  }
+
+  get("practice-draw").addEventListener("click", drawOne);
+  get("library-draw").addEventListener("click", drawOne);
+
+  function untapAll() {
+    for (const card of cards) {
+      if (card.zone === "battlefield") card.tapped = false;
+    }
+  }
+
+  get("practice-untap").addEventListener("click", () => {
+    if (!ready) return;
+
+    untapAll();
+    render();
+    announce("Battlefield untapped.");
+  });
+
+  get("practice-turn").addEventListener("click", () => {
+    if (!ready) return;
+
+    untapAll();
+    turn++;
+    const drawn = draw(1);
+    render();
+
+    announce(
+      `Turn ${turn}. Battlefield untapped. ` +
+        (drawn ? "Drew a card." : "Library is empty."),
+    );
+  });
+
+  get("practice-shuffle").addEventListener("click", () => {
+    if (!ready) return;
+
+    shuffle(library);
+    announce("Library shuffled.");
+  });
+
+  get("practice-mulligan").addEventListener("click", () => {
+    if (!ready) return;
+
+    for (const card of contents("hand")) {
+      resetCard(card);
+      card.zone = "library";
+      library.push(card);
+    }
+
+    shuffle(library);
+    const drawn = draw(7);
+    render();
+    announce(`Hand shuffled into library. Drew ${drawn} cards.`);
+  });
+
+  get("practice-reset").addEventListener("click", () => {
+    if (
+      ready &&
+      window.confirm("Restart practice with a fresh opening hand?")
+    ) {
+      startSession();
+    }
+  });
+
+  try {
+    if (localStorage.getItem("binderlink-goldfish-side") === "left") {
+      side.value = "left";
+    }
+  } catch {
+    // Use right-side piles.
+  }
+
+  function applyCardSize() {
+    const value = Number(cardSize.value);
+    const size = Number.isFinite(value)
+      ? Math.max(72, Math.min(150, value))
+      : 108;
+
+    cardSize.value = String(size);
+    table.style.setProperty("--card-width", `${size}px`);
+    cardSize.setAttribute("aria-valuetext", `${size} pixels`);
+  }
+
+  try {
+    const savedSize = Number(localStorage.getItem("binderlink-goldfish-size"));
+
+    if (savedSize >= 72 && savedSize <= 150) {
+      cardSize.value = String(savedSize);
+    }
+  } catch {
+    // Use the default card size.
+  }
+
+  applyCardSize();
+
+  cardSize.addEventListener("input", applyCardSize);
+  cardSize.addEventListener("change", () => {
+    try {
+      localStorage.setItem("binderlink-goldfish-size", cardSize.value);
+    } catch {
+      // Keep it for this visit.
+    }
+  });
+
+  mat.dataset.side = side.value;
+
+  side.addEventListener("change", () => {
+    mat.dataset.side = side.value;
+
+    try {
+      localStorage.setItem("binderlink-goldfish-side", side.value);
+    } catch {
+      // Keep it for this visit.
+    }
+  });
+
+  function clearSession() {
+    ready = false;
+    closeDialogs();
+    entries = [];
+    cards = [];
+    library = [];
+    table.hidden = true;
+
+    for (const list of Object.values(rows)) {
+      list.replaceChildren();
+    }
+
+    get("graveyard-pile").replaceChildren();
+    get("exile-pile").replaceChildren();
+    life.value = "40";
+    tax.value = "0";
+    get("practice-heading").textContent = "Goldfish";
+  }
+
+  async function loadDeck() {
+    const active = ++request;
+    clearSession();
+
+    if (
+      !deckId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        deckId,
+      )
+    ) {
+      announce("Open a saved deck and choose Goldfish deck.");
+      return;
+    }
+
+    back.href = `/mtg/deck?id=${encodeURIComponent(deckId)}`;
+    back.textContent = "← Back to deck";
+    announce("Loading saved deck…");
+
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getSession();
+
+      if (active !== request) return;
+      if (authError) throw authError;
+
+      viewer = auth.session?.user.id ?? null;
+
+      if (!viewer) {
+        announce("Sign in using the account menu to practice a saved deck.");
+        return;
+      }
+
+      const { data: deck, error: deckError } = await supabase
+        .from("decks")
+        .select("id, name")
+        .eq("id", deckId)
+        .maybeSingle();
+
+      if (active !== request) return;
+      if (deckError) throw deckError;
+      if (!deck) throw new Error("Deck unavailable for your account.");
+
+      const loaded = await loadAllPages<Entry>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from("deck_cards")
+            .select(
+              "id, name, quantity, card_role, image_url, oracle_text, card_faces, type_line",
+            )
+            .eq("deck_id", deckId)
+            .in("card_role", ["main", "commander"])
+            .order("id", { ascending: true })
+            .range(from, to);
+
+          return { data: data as Entry[] | null, error };
+        },
+        { isCurrent: () => active === request },
+      );
+
+      if (loaded === null || active !== request) return;
+
+      const total = loaded.reduce((sum, entry) => sum + entry.quantity, 0);
+
+      if (
+        loaded.some(
+          (entry) =>
+            !Number.isSafeInteger(entry.quantity) ||
+            entry.quantity < 1 ||
+            entry.quantity > 1000,
+        ) ||
+        total > 10000
+      ) {
+        throw new Error("This deck has unsupported card quantities.");
+      }
+
+      if (!loaded.some((entry) => entry.card_role === "main")) {
+        throw new Error("Add main-deck cards before starting practice.");
+      }
+
+      entries = loaded;
+      get("practice-heading").textContent = `Goldfish · ${deck.name}`;
+      ready = true;
+      table.hidden = false;
+      startSession();
+    } catch (error) {
+      if (active !== request) return;
+
+      clearSession();
+
+      announce(
+        error &&
+          typeof error === "object" &&
+          "message" in error &&
+          typeof error.message === "string"
+          ? error.message
+          : "Couldn’t load this deck. Refresh to try again.",
+      );
+    }
+  }
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    const nextViewer = session?.user.id ?? null;
+
+    if (
+      event === "SIGNED_OUT" ||
+      ((event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
+        nextViewer !== viewer)
+    ) {
+      request++;
+      viewer = nextViewer;
+      clearSession();
+      announce("Checking your sign-in…");
+      window.setTimeout(() => void loadDeck(), 0);
+    }
+  });
+
+  void loadDeck();
+</script>
+
+<style>
+  #card-hover-preview {
+    position: fixed;
+    z-index: 1000;
+    overflow: hidden;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-void);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 75%);
+    pointer-events: none;
+  }
+
+  #card-hover-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  #card-hover-preview[hidden] {
+    display: none !important;
+  }
+
+  .practice {
+    max-width: 1680px;
+    margin: auto;
+    color: var(--color-brand-text);
+  }
+
+  .practice a {
+    color: var(--color-pyroduck-plasma);
+    font-weight: 600;
+  }
+
+  .page-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  h1 {
+    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  h3 {
+    font-weight: 700;
+  }
+
+  .solo-label {
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    font-size: 0.8rem;
+  }
+
+  .help,
+  .credits,
+  #practice-status,
+  .table-help {
+    margin-top: 0.5rem;
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  #practice-status {
+    min-height: 1.5em;
+    margin-bottom: 0.75rem;
+  }
+
+  button,
+  input,
+  select {
+    min-height: 44px;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.45rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:hover:not(:disabled) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  input[type="number"] {
+    width: 5rem;
+  }
+
+  .toolbar,
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .toolbar {
+    justify-content: space-between;
+    padding: 0.65rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  .toolbar label,
+  .tax-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .toolbar button {
+    font-size: 0.875rem;
+  }
+
+  #practice-card-size {
+    width: 100px;
+    padding: 0;
+    border: 0;
+    accent-color: var(--color-pyroduck-plasma);
+  }
+
+  .table-help {
+    margin-bottom: 0.75rem;
+  }
+
+  .table-help p {
+    max-width: 90ch;
+    margin-top: 0.5rem;
+  }
+
+  summary {
+    cursor: pointer;
+  }
+
+  .mat-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 0.3rem;
+    border-radius: 0.75rem;
+  }
+
+  .playmat {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      calc(var(--card-width, 108px) * 2 + 64px);
+    align-items: start;
+    gap: 0.65rem;
+    min-width: 760px;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: radial-gradient(
+      ellipse at 30% 25%,
+      var(--color-pyroduck-afterdark),
+      var(--color-pyroduck-void)
+    );
+  }
+
+  .field {
+    display: grid;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+
+  .mat-zone {
+    min-width: 0;
+    padding: 0.6rem;
+    border: 1px solid
+      color-mix(in srgb, var(--color-pyroduck-plasma) 40%, transparent);
+    border-radius: 0.6rem;
+    background: rgb(0 0 0 / 25%);
+  }
+
+  .zone-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .zone-heading span {
+    color: var(--color-brand-muted);
+    font-size: 0.8rem;
+  }
+
+  .side-zones {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    align-items: start;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+
+  .command-zone {
+    grid-column: 1;
+    grid-row: 1 / 4;
+  }
+
+  .library-zone {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .graveyard-zone {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .exile-zone {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .command-zone h2 {
+    font-size: 0.8rem;
+  }
+
+  .tax-label {
+    flex-direction: column;
+    align-items: stretch;
+    margin-top: 0.75rem;
+  }
+
+  .tax-label input {
+    width: 100%;
+  }
+
+  .playmat[data-side="left"] {
+    grid-template-columns:
+      calc(var(--card-width, 108px) * 2 + 64px)
+      minmax(0, 1fr);
+  }
+
+  .playmat[data-side="left"] .side-zones {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .playmat[data-side="left"] .field {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .playmat[data-side="left"] .command-zone {
+    grid-column: 2;
+  }
+
+  .playmat[data-side="left"] .library-zone,
+  .playmat[data-side="left"] .graveyard-zone,
+  .playmat[data-side="left"] .exile-zone {
+    grid-column: 1;
+  }
+
+  .card-row,
+  .command-cards,
+  .hand-cards {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .card-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 0.75rem;
+    min-height: calc(var(--card-width, 108px) * 1.4 + 12px);
+    padding: 0.25rem 0.25rem 0.5rem;
+  }
+
+  .command-cards {
+    display: grid;
+    justify-items: center;
+    gap: 0.75rem;
+  }
+
+  .empty-zone {
+    align-self: center;
+    padding: 1rem 0.5rem;
+    color: var(--color-brand-muted);
+    font-size: 0.8rem;
+  }
+
+  .hand-zone {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-afterdark);
+  }
+
+  .hand-cards {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    overflow-x: auto;
+    padding: 0.25rem 0.25rem 0.5rem;
+    min-height: calc(var(--card-width, 108px) * 1.4 + 12px);
+  }
+
+  .library-back,
+  .pile-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0;
+    aspect-ratio: 244 / 340;
+    overflow: hidden;
+    font-size: 0.75rem;
+  }
+
+  .library-back {
+    color: var(--color-pyroduck-lime);
+    background: radial-gradient(
+      ellipse,
+      var(--color-pyroduck-royal, #3b038d),
+      var(--color-pyroduck-void)
+    );
+  }
+
+  .library-symbol {
+    font-size: 2rem;
+  }
+
+  .pile-button :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .practice :global(.table-card) {
+    flex: 0 0 var(--card-width, 108px);
+    width: var(--card-width, 108px);
+    min-width: 0;
+    list-style: none;
+  }
+
+  .practice :global(.card-shell) {
+    position: relative;
+    width: 100%;
+  }
+
+  .practice :global(.card-art-button) {
+    display: block;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 244 / 340;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.4rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    cursor: pointer;
+  }
+
+  .practice :global(.card-art-button img) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 120ms;
+  }
+
+  .practice :global(.is-tapped .card-art-button) {
+    border: 2px solid var(--color-pyroduck-lime);
+  }
+
+  .practice :global(.is-tapped .card-art-button img) {
+    transform: rotate(90deg) scale(0.71);
+  }
+
+  .practice :global(.card-fallback) {
+    display: block;
+    padding: 0.5rem;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .practice :global(.card-tools) {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    gap: 2px;
+  }
+
+  .practice :global(.card-icon) {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 5px;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.35rem;
+    background: rgb(0 0 0 / 90%);
+    color: var(--color-brand-text);
+    cursor: pointer;
+  }
+
+  .practice :global(.card-icon svg) {
+    width: 20px;
+    height: 20px;
+  }
+
+  .practice :global(.card-icon:hover) {
+    border-color: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-lime);
+  }
+
+  .practice :global(.card-badges) {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    right: 2px;
+    padding: 0.2rem;
+    border-radius: 0.2rem;
+    background: rgb(0 0 0 / 90%);
+    color: var(--color-pyroduck-lime);
+    font-size: 0.65rem;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .practice :global(.attachment-stack) {
+    list-style: none;
+    padding: 0;
+    margin: -4px 4px 0;
+  }
+
+  .practice :global(.attachment-edge) {
+    display: block;
+    width: 100%;
+    min-height: 30px;
+    padding: 0.25rem;
+    overflow: hidden;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0 0 0.35rem 0.35rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+    font: inherit;
+    font-size: 0.65rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .practice :global(.land-stack .card-shell) {
+    border-radius: 0.4rem;
+    box-shadow:
+      3px 3px 0 var(--color-pyroduck-afterdark),
+      4px 4px 0 var(--color-pyroduck-plasma),
+      6px 6px 0 var(--color-pyroduck-afterdark);
+  }
+
+  .practice :global(.stack-count) {
+    display: block;
+    width: 100%;
+    min-height: 32px;
+    margin-top: 0.5rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.35rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-pyroduck-lime);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  dialog {
+    width: min(920px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1rem;
+    overflow-y: auto;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 1rem;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-brand-text);
+  }
+
+  dialog::backdrop {
+    background: rgb(0 0 0 / 82%);
+  }
+
+  .dialog-close {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.5rem;
+  }
+
+  dialog h2 {
+    margin-bottom: 0.75rem;
+    font-size: 1.25rem;
+  }
+
+  .inspector-layout {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1.3fr)
+      minmax(220px, 1fr);
+    align-items: start;
+    gap: 1.25rem;
+  }
+
+  #practice-preview-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 72dvh;
+    object-fit: contain;
+  }
+
+  .inspector-controls {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .inspector-controls label,
+  #preview-battlefield {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .inspector-controls select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rules {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .library-search-controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .library-search-controls label {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .library-search-controls input {
+    width: 100%;
+  }
+
+  .library-search-controls p {
+    grid-column: 1 / -1;
+  }
+
+  .pile-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.75rem;
+    list-style: none;
+    padding: 0;
+    margin-top: 1rem;
+  }
+
+  .pile-list :global(.pile-card-button) {
+    display: grid;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .pile-list :global(.pile-card-button img) {
+    width: 100%;
+    height: auto;
+  }
+
+  .pile-list :global(.pile-card-button:hover) {
+    border-color: var(--color-pyroduck-lime);
+  }
+
+  :global(.practice button:focus-visible),
+  :global(.practice a:focus-visible),
+  :global(.practice select:focus-visible),
+  :global(.practice input:focus-visible),
+  :global(.practice summary:focus-visible),
+  :global(.practice .mat-scroll:focus-visible),
+  :global(#practice-preview :focus-visible),
+  :global(#practice-pile :focus-visible) {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
+  :global(.practice [hidden]),
+  #practice-preview [hidden],
+  #practice-pile [hidden],
+  #practice-token-picker [hidden] {
+    display: none !important;
+  }
+
+  @media (max-width: 700px) {
+    .inspector-layout,
+    .library-search-controls {
+      grid-template-columns: 1fr;
+    }
+
+    #practice-preview-image {
+      max-height: 55dvh;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .practice :global(.card-icon) {
+      width: 44px;
+      height: 44px;
+      min-height: 44px;
+    }
+
+    .practice :global(.attachment-edge),
+    .practice :global(.stack-count) {
+      min-height: 44px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .practice :global(.card-art-button img) {
+      transition: none;
+    }
+  }
+
+  #token-search-status {
+    margin-top: 0.75rem;
+    color: var(--color-brand-muted);
+  }
+
+  #token-results {
+    margin-bottom: 1rem;
+  }
+
+  .pt-controls {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .pt-adjust {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 0.4rem;
+  }
+
+  .pt-adjust input {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .pt-adjust button {
+    padding: 0;
+    font-size: 1.25rem;
+  }
+</style>
