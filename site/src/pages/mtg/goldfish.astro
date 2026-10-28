@@ -42,6 +42,7 @@ import Layout from "@/layouts/Layout.astro";
 
           <div class="toolbar-group">
             <button id="practice-tokens" type="button">Tokens</button>
+            <button id="practice-look" type="button">Look at top card</button>
             <button id="practice-search" type="button">Search library</button>
             <button id="practice-shuffle" type="button">Shuffle</button>
             <button id="practice-mulligan" type="button">Redraw 7</button>
@@ -272,6 +273,9 @@ import Layout from "@/layouts/Layout.astro";
         </label>
 
         <button id="preview-move" type="button">Move card</button>
+        <button id="preview-pay-exile" type="button" hidden>
+          Pay 1 life · exile top card
+        </button>
         <button id="preview-reveal" type="button" hidden> Reveal card </button>
 
         <div id="preview-battlefield" hidden>
@@ -1876,6 +1880,12 @@ import Layout from "@/layouts/Layout.astro";
     const card = selectedCard();
     if (!card) return;
 
+    const isTopCard =
+      card.zone === "library" &&
+      library[library.length - 1]?.instanceId === card.instanceId;
+
+    get("preview-pay-exile").hidden = !isTopCard;
+
     const face = card.entry.card_faces?.[card.face];
     const src = imageOf(card);
 
@@ -1896,7 +1906,9 @@ import Layout from "@/layouts/Layout.astro";
     const location =
       card.zone === "battlefield"
         ? `${card.lane} row · ${card.tapped ? "tapped" : "untapped"}`
-        : card.zone;
+        : isTopCard
+          ? "Top of library · looking only"
+          : card.zone;
 
     get("practice-card-location").textContent =
       location + (host ? ` · attached to ${nameOf(host)}` : "");
@@ -1974,6 +1986,53 @@ import Layout from "@/layouts/Layout.astro";
 
     card.face = (card.face + 1) % card.entry.card_faces.length;
     render();
+  });
+
+  get("practice-look").addEventListener("click", () => {
+    if (!ready) return;
+
+    const card = library[library.length - 1];
+
+    if (!card) {
+      announce("Your library is empty.");
+      return;
+    }
+
+    openPreview(card, null);
+
+    get("preview-feedback").textContent =
+      "Looking only. Closing this view leaves the card on top. " +
+      "Use Move to when an effect allows you to play or move it.";
+  });
+
+  get("preview-pay-exile").addEventListener("click", () => {
+    const card = selectedCard();
+
+    if (
+      !card ||
+      card.zone !== "library" ||
+      library[library.length - 1]?.instanceId !== card.instanceId
+    ) {
+      return;
+    }
+
+    const currentLife = Number(life.value);
+
+    if (!Number.isSafeInteger(currentLife) || currentLife < 1) {
+      get("preview-feedback").textContent =
+        "You need at least 1 life to pay this cost.";
+      return;
+    }
+
+    const cardName = nameOf(card);
+
+    life.value = String(currentLife - 1);
+    moveCard(card, "exile");
+    preview.close();
+
+    announce(
+      `Paid 1 life and exiled ${cardName} from the top of your library.`,
+    );
   });
 
   get("preview-move").addEventListener("click", () => {
