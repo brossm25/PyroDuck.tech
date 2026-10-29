@@ -70,6 +70,30 @@ import Layout from "@/layouts/Layout.astro";
           </div>
         </section>
 
+        <div
+          class="toolbar-group library-actions"
+          role="group"
+          aria-label="Library actions"
+        >
+          <label>
+            Top cards
+            <input
+              id="library-action-quantity"
+              type="number"
+              min="1"
+              max="10000"
+              step="1"
+              value="1"
+              required
+            />
+          </label>
+
+          <button id="practice-mill" type="button">Mill to graveyard</button>
+          <button id="practice-exile-library" type="button"
+            >Exile from library</button
+          >
+        </div>
+
         <details class="table-help">
           <summary>Practice controls and mulligans</summary>
           <p>
@@ -2320,6 +2344,58 @@ import Layout from "@/layouts/Layout.astro";
     get("pile-title").textContent = "";
   }
 
+  function moveTopCards(target: "graveyard" | "exile") {
+    if (!ready) return;
+
+    const quantity = get<HTMLInputElement>("library-action-quantity");
+
+    if (!quantity.reportValidity()) return;
+
+    const amount = quantity.valueAsNumber;
+
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10000) {
+      return;
+    }
+
+    if (!library.length) {
+      announce("Your library is empty.");
+      return;
+    }
+
+    const moved = Math.min(amount, library.length);
+
+    for (let index = 0; index < moved; index++) {
+      const card = library.pop()!;
+
+      resetCard(card);
+      card.zone = target;
+      card.order = ++sequence;
+    }
+
+    render();
+
+    const count = `${moved} ${moved === 1 ? "card" : "cards"}`;
+    const message =
+      target === "graveyard"
+        ? `Milled ${count} from the top of your library into your graveyard.`
+        : `Exiled ${count} from the top of your library.`;
+
+    announce(
+      message +
+        (moved < amount
+          ? " Your library had fewer cards than requested and is now empty."
+          : ""),
+    );
+  }
+
+  get("practice-mill").addEventListener("click", () => {
+    moveTopCards("graveyard");
+  });
+
+  get("practice-exile-library").addEventListener("click", () => {
+    moveTopCards("exile");
+  });
+
   function drawOne() {
     if (!ready) return;
 
@@ -3470,5 +3546,9 @@ import Layout from "@/layouts/Layout.astro";
 
   .tax-label :global(.number-control) {
     justify-self: center;
+  }
+
+  .library-actions {
+    margin-block: 0.75rem;
   }
 </style>
