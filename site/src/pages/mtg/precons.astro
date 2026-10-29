@@ -1,0 +1,340 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { readFile } from "node:fs/promises";
+
+interface Precon {
+  id: string;
+  name: string;
+  setCode: string;
+  setName: string;
+  releaseDate: string;
+  commanders: {
+    name: string;
+    scryfallId: string | null;
+    colors: string[];
+  }[];
+}
+
+const catalog = JSON.parse(
+  await readFile(
+    new URL("../../../public/data/precons/index.json", import.meta.url),
+    "utf8",
+  ),
+) as { decks: Precon[] };
+
+const years = [
+  ...new Set(catalog.decks.map((deck) => deck.releaseDate.slice(0, 4))),
+]
+  .sort()
+  .reverse();
+
+function commanderImage(id: string | null) {
+  if (
+    !id ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  ) {
+    return null;
+  }
+
+  return `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
+}
+---
+
+<Layout
+  title="Commander Precons | BinderLink"
+  description="Browse Commander precons by commander and choose one to goldfish."
+>
+  <section class="precons-page px-6 py-12 sm:py-16">
+    <div class="mx-auto max-w-7xl">
+      <a href="/mtg/decks">← Your decks</a>
+
+      <h1 class="mt-8 text-4xl font-bold">Goldfish a Commander precon</h1>
+
+      <p class="intro">
+        Recognize the commander? Browse the images below, or search for a
+        commander, deck, or set. These are original precon lists.
+      </p>
+
+      <div class="precon-filters">
+        <label>
+          Search
+          <input
+            id="precon-query"
+            type="search"
+            placeholder="Commander, deck, or set…"
+            autocomplete="off"
+            aria-controls="precon-list"
+          />
+        </label>
+
+        <label>
+          Release year
+          <select id="precon-year" aria-controls="precon-list">
+            <option value="">All years</option>
+            {years.map((year) => <option value={year}>{year}</option>)}
+          </select>
+        </label>
+
+        <button id="precon-clear" type="button">Clear filters</button>
+      </div>
+
+      <p id="precon-count" role="status" aria-live="polite">
+        {catalog.decks.length} precons · newest releases first
+      </p>
+
+      <ul id="precon-list" class="precon-grid">
+        {
+          catalog.decks.map((deck) => (
+            <li
+              class="precon-card"
+              data-precon
+              data-year={deck.releaseDate.slice(0, 4)}
+              data-search={[
+                deck.name,
+                deck.setName,
+                deck.setCode,
+                ...deck.commanders.map((commander) => commander.name),
+              ]
+                .join(" ")
+                .toLowerCase()}
+            >
+              <a
+                class="precon-art"
+                href={`/mtg/goldfish?precon=${encodeURIComponent(deck.id)}`}
+                aria-label={`Goldfish ${deck.name}, led by ${deck.commanders.map((card) => card.name).join(" and ")}`}
+              >
+                {deck.commanders.map((commander) => {
+                  const image = commanderImage(commander.scryfallId);
+
+                  return image ? (
+                    <img
+                      src={image}
+                      alt={commander.name}
+                      width="488"
+                      height="680"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span class="art-fallback">{commander.name}</span>
+                  );
+                })}
+              </a>
+
+              <div class="precon-info">
+                <h2>{deck.name}</h2>
+
+                <p class="commander-name">
+                  {deck.commanders.map((card) => card.name).join(" · ")}
+                </p>
+
+                <p class="release">
+                  {deck.setName} · {deck.releaseDate.slice(0, 4)}
+                </p>
+
+                <a
+                  class="goldfish-link"
+                  href={`/mtg/goldfish?precon=${encodeURIComponent(deck.id)}`}
+                >
+                  Goldfish this precon →
+                </a>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+
+      <p id="precon-empty" hidden>
+        No precons match those filters. Try a different search or clear the
+        filters.
+      </p>
+
+      <p class="credits">
+        Decklist data from
+        <a href="https://mtgjson.com" target="_blank" rel="noopener noreferrer">
+          MTGJSON
+        </a>. Card images from
+        <a
+          href="https://scryfall.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Scryfall
+        </a>. Reissues and collector editions appear separately.
+      </p>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const query = document.getElementById("precon-query") as HTMLInputElement;
+  const year = document.getElementById("precon-year") as HTMLSelectElement;
+  const count = document.getElementById("precon-count")!;
+  const empty = document.getElementById("precon-empty")!;
+  const cards = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-precon]"),
+  );
+
+  function filterPrecons() {
+    const terms = query.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let visible = 0;
+
+    for (const card of cards) {
+      const matches =
+        (!year.value || card.dataset.year === year.value) &&
+        terms.every((term) => card.dataset.search?.includes(term));
+
+      card.hidden = !matches;
+      if (matches) visible++;
+    }
+
+    count.textContent = `${visible} of ${cards.length} precons · newest releases first`;
+    empty.hidden = visible !== 0;
+  }
+
+  query.addEventListener("input", filterPrecons);
+  year.addEventListener("change", filterPrecons);
+
+  document.getElementById("precon-clear")!.addEventListener("click", () => {
+    query.value = "";
+    year.value = "";
+    filterPrecons();
+    query.focus();
+  });
+</script>
+
+<style>
+  .intro,
+  .credits {
+    margin-block: 1rem;
+    color: var(--color-brand-muted, #d6c9e5);
+  }
+
+  .precon-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 1rem;
+    margin-block: 1.5rem;
+  }
+
+  .precon-filters label {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .precon-filters label:first-child {
+    flex: 1 1 16rem;
+  }
+
+  input,
+  select,
+  button {
+    min-height: 44px;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  .precon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+    gap: 1.25rem;
+    margin-block: 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .precon-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #a444fc;
+    border-radius: 0.8rem;
+    background: #10071b;
+  }
+
+  .precon-card[hidden] {
+    display: none;
+  }
+
+  .precon-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    background: #000;
+  }
+
+  .precon-art img {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    aspect-ratio: 488 / 680;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    flex: 1 1 0;
+  }
+
+  .art-fallback {
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+    padding: 1rem;
+    color: #b5fb14;
+  }
+
+  .precon-info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem;
+  }
+
+  h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+
+  .commander-name,
+  .release {
+    color: #d6c9e5;
+    font-size: 0.9rem;
+  }
+
+  .goldfish-link {
+    display: block;
+    margin-top: auto;
+    padding: 0.65rem;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .goldfish-link:hover {
+    background: #b5fb14;
+  }
+
+  .credits {
+    font-size: 0.85rem;
+  }
+</style>

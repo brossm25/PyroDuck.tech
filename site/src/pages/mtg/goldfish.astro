@@ -636,6 +636,7 @@ import Layout from "@/layouts/Layout.astro";
   const cardSize = get<HTMLInputElement>("practice-card-size");
   const back = get<HTMLAnchorElement>("practice-back");
   const deckId = new URLSearchParams(location.search).get("id");
+  const preconId = new URLSearchParams(location.search).get("precon");
 
   const preview = get<HTMLDialogElement>("practice-preview");
   const previewImage = get<HTMLImageElement>("practice-preview-image");
@@ -2626,9 +2627,205 @@ import Layout from "@/layouts/Layout.astro";
     get("practice-heading").textContent = "Goldfish";
   }
 
+  interface PreconCard {
+    uuid: string;
+    name: string;
+    faceName: string | null;
+    count: number;
+    scryfallId: string | null;
+    type: string;
+    text: string;
+    side: string | null;
+    layout: string;
+    otherFaceIds: string[];
+  }
+
+  interface PreconDeck {
+    id: string;
+    name: string;
+    commanders: PreconCard[];
+    mainBoard: PreconCard[];
+  }
+
+  function preconImage(id: string | null, side = "front"): string | null {
+    if (
+      !id ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      )
+    ) {
+      return null;
+    }
+
+    return `https://cards.scryfall.io/normal/${side}/${id[0]}/${id[1]}/${id}.jpg`;
+  }
+
+  function preconEntries(deck: PreconDeck): Entry[] {
+    const allCards = [...deck.commanders, ...deck.mainBoard];
+    const byId = new Map(allCards.map((card) => [card.uuid, card]));
+
+    function convert(
+      source: PreconCard[],
+      role: "commander" | "main",
+    ): Entry[] {
+      // MTGJSON can include separate records for the back of a card.
+      // Keep one playable card, with both faces attached to that entry.
+      return source
+        .filter((card) => !card.side || card.side === "a")
+        .map((card, index): Entry => {
+          const doubleFaced = [
+            "transform",
+            "modal_dfc",
+            "double_faced_token",
+            "reversible_card",
+          ].includes(card.layout);
+
+          const otherFaces = (card.otherFaceIds ?? [])
+            .map((id) => byId.get(id))
+            .filter((face): face is PreconCard => !!face)
+            .sort((a, b) => (a.side ?? "").localeCompare(b.side ?? ""));
+
+          const faces = doubleFaced
+            ? [
+                {
+                  name: card.faceName || card.name,
+                  image_url: preconImage(card.scryfallId),
+                  oracle_text: card.text || "",
+                  type_line: card.type || "",
+                },
+                ...otherFaces.map((face) => ({
+                  name: face.faceName || face.name,
+                  image_url: preconImage(
+                    face.scryfallId || card.scryfallId,
+                    "back",
+                  ),
+                  oracle_text: face.text || "",
+                  type_line: face.type || "",
+                })),
+              ]
+            : [];
+
+          return {
+            id: `precon:${deck.id}:${role}:${card.uuid}:${index}`,
+            name: card.name,
+            quantity: card.count,
+            card_role: role,
+            image_url: preconImage(card.scryfallId),
+            oracle_text: card.text || "",
+            type_line: card.type || "",
+            card_faces: faces.length ? faces : null,
+          };
+        });
+    }
+
+    return [
+      ...convert(deck.commanders, "commander"),
+      ...convert(deck.mainBoard, "main"),
+    ];
+  }
+
+  async function loadPrecon(id: string, active: number) {
+    back.href = "/mtg/precons";
+    back.textContent = "← Back to precons";
+    announce("Loading precon…");
+
+    try {
+      if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+        throw new Error("Invalid precon link. Choose a deck from the gallery.");
+      }
+
+      const catalogResponse = await fetch("/data/precons/index.json", {
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      if (!catalogResponse.ok) {
+        throw new Error("Couldn’t load the precon catalog.");
+      }
+
+      const catalog = (await catalogResponse.json()) as {
+        decks: { id: string }[];
+      };
+
+      if (active !== request) return;
+
+      if (!catalog.decks.some((deck) => deck.id === id)) {
+        throw new Error(
+          "This precon isn’t in the catalog. Choose one from the gallery.",
+        );
+      }
+
+      const response = await fetch(
+        `/data/precons/${encodeURIComponent(id)}.json`,
+        { signal: AbortSignal.timeout(20_000) },
+      );
+
+      if (!response.ok) {
+        throw new Error("Couldn’t load this precon’s decklist.");
+      }
+
+      const deck = (await response.json()) as PreconDeck;
+
+      if (active !== request) return;
+
+      if (
+        deck.id !== id ||
+        !Array.isArray(deck.commanders) ||
+        !Array.isArray(deck.mainBoard)
+      ) {
+        throw new Error("This precon has an invalid decklist.");
+      }
+
+      const loaded = preconEntries(deck);
+      const total = loaded.reduce((sum, entry) => sum + entry.quantity, 0);
+
+      if (
+        !loaded.some((entry) => entry.card_role === "commander") ||
+        !loaded.some((entry) => entry.card_role === "main") ||
+        loaded.some(
+          (entry) =>
+            !Number.isSafeInteger(entry.quantity) ||
+            entry.quantity < 1 ||
+            entry.quantity > 1000,
+        ) ||
+        total > 10000
+      ) {
+        throw new Error("This precon has unsupported card quantities.");
+      }
+
+      entries = loaded;
+      get("practice-heading").textContent = `Goldfish · ${deck.name}`;
+      ready = true;
+      table.hidden = false;
+      startSession();
+
+      announce(
+        `Precon practice started with ${total} cards. Drew ${Math.min(
+          7,
+          total -
+            loaded
+              .filter((entry) => entry.card_role === "commander")
+              .reduce((sum, entry) => sum + entry.quantity, 0),
+        )} cards. Nothing was added to your collection.`,
+      );
+    } catch (error) {
+      if (active !== request) return;
+
+      clearSession();
+      announce(
+        error instanceof Error
+          ? error.message
+          : "Couldn’t load this precon. Refresh to try again.",
+      );
+    }
+  }
+
   async function loadDeck() {
     const active = ++request;
     clearSession();
+    if (preconId !== null) {
+      await loadPrecon(preconId, active);
+      return;
+    }
 
     if (
       !deckId ||
@@ -2726,6 +2923,7 @@ import Layout from "@/layouts/Layout.astro";
   }
 
   supabase.auth.onAuthStateChange((event, session) => {
+    if (preconId !== null) return;
     const nextViewer = session?.user.id ?? null;
 
     if (
