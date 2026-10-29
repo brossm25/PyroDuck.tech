@@ -88,6 +88,7 @@ import Layout from "@/layouts/Layout.astro";
             />
           </label>
 
+          <button id="practice-look-many" type="button">Look at cards</button>
           <button id="practice-mill" type="button">Mill to graveyard</button>
           <button id="practice-exile-library" type="button"
             >Exile from library</button
@@ -552,7 +553,7 @@ import Layout from "@/layouts/Layout.astro";
     "library" | "command" | "hand" | "battlefield" | "graveyard" | "exile";
 
   type Lane = "creatures" | "permanents" | "lands";
-  type Pile = "library" | "graveyard" | "exile" | "group";
+  type Pile = "library" | "graveyard" | "exile" | "group" | "look";
 
   interface PracticeCard {
     abilityTags?: string[];
@@ -662,6 +663,7 @@ import Layout from "@/layouts/Layout.astro";
   let returnKey: string | null = null;
   let pileZone: Pile | null = null;
   let groupIds: string[] = [];
+  let lookedCardIds: string[] = [];
   let pileReturnFocus: HTMLButtonElement | null = null;
 
   const hoverPreview = get<HTMLDivElement>("card-hover-preview");
@@ -2185,30 +2187,37 @@ import Layout from "@/layouts/Layout.astro";
 
     const searching = pileZone === "library";
     const grouped = pileZone === "group";
+    const looking = pileZone === "look";
 
-    const pileCards = grouped
-      ? cards.filter(
-          (card) =>
-            groupIds.includes(card.instanceId) && card.zone === "battlefield",
-        )
-      : contents(pileZone as Zone);
-
-    const title = searching
-      ? "Search library"
+    const pileCards = looking
+      ? library.filter((card) => lookedCardIds.includes(card.instanceId))
       : grouped
-        ? "Land stack"
-        : pileZone === "graveyard"
-          ? "Graveyard"
-          : "Exile";
+        ? cards.filter(
+            (card) =>
+              groupIds.includes(card.instanceId) && card.zone === "battlefield",
+          )
+        : contents(pileZone as Zone);
+
+    const title = looking
+      ? "Look at top cards"
+      : searching
+        ? "Search library"
+        : grouped
+          ? "Land stack"
+          : pileZone === "graveyard"
+            ? "Graveyard"
+            : "Exile";
 
     get("pile-title").textContent = `${title} · ${pileCards.length}`;
     get("library-search-controls").hidden = !searching;
 
-    get("pile-help").textContent = searching
-      ? "Choose a card, then use Move to. Results are alphabetical, not library order."
-      : grouped
-        ? "Choose an individual land to inspect, tap, or move. Clicking the stack’s card on the mat taps one copy."
-        : "Newest cards first. Choose a card to inspect it or move it.";
+    get("pile-help").textContent = looking
+      ? "Top card first, reading left to right. Move up brings a card closer to the top; Move down puts it farther down. Choose a card to move it to your hand, graveyard, exile, or library bottom. Changes apply immediately; closing keeps the current order."
+      : searching
+        ? "Choose a card, then use Move to. Results are alphabetical, not library order."
+        : grouped
+          ? "Choose an individual land to inspect, tap, or move. Clicking the stack’s card on the mat taps one copy."
+          : "Newest cards first. Choose a card to inspect it or move it.";
 
     const query = get<HTMLInputElement>("library-query")
       .value.trim()
@@ -2263,6 +2272,58 @@ import Layout from "@/layouts/Layout.astro";
 
       choose.append(title);
       item.append(choose);
+
+      if (looking) {
+        const position = visible.indexOf(card);
+        const orderLabel = document.createElement("p");
+        orderLabel.textContent =
+          position === 0 ? "1 · Top card" : `${position + 1} from top`;
+        item.append(orderLabel);
+
+        const controls = document.createElement("div");
+        controls.className = "look-order-controls";
+
+        for (const direction of [-1, 1] as const) {
+          const neighbor = visible[position + direction];
+
+          const reorder = button(
+            direction === -1 ? "Move up" : "Move down",
+            () => {
+              if (!ready || pileZone !== "look" || !neighbor) return;
+
+              const currentIndex = library.indexOf(card);
+              const neighborIndex = library.indexOf(neighbor);
+
+              if (currentIndex < 0 || neighborIndex < 0) return;
+
+              library[currentIndex] = neighbor;
+              library[neighborIndex] = card;
+
+              render();
+              announce(
+                `${nameOf(card)} moved ${direction === -1 ? "closer to" : "farther from"} the top.`,
+              );
+
+              get<HTMLUListElement>("pile-list")
+                .querySelector<HTMLButtonElement>(
+                  `[data-look-order="${card.instanceId}:${direction}"]`,
+                )
+                ?.focus();
+            },
+          );
+
+          reorder.disabled = !neighbor;
+          reorder.dataset.lookOrder = `${card.instanceId}:${direction}`;
+          reorder.setAttribute(
+            "aria-label",
+            `${nameOf(card)}: move ${direction === -1 ? "closer to" : "farther from"} the top`,
+          );
+          controls.append(reorder);
+        }
+
+        item.append(controls);
+      }
+
       list.append(item);
     }
 
@@ -2287,6 +2348,33 @@ import Layout from "@/layouts/Layout.astro";
       pileDialog.showModal();
     });
   }
+
+  get("practice-look-many").addEventListener("click", () => {
+    if (!ready) return;
+
+    const quantity = get<HTMLInputElement>("library-action-quantity");
+
+    if (!quantity.reportValidity()) return;
+
+    const amount = quantity.valueAsNumber;
+
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10000) {
+      return;
+    }
+
+    if (!library.length) {
+      announce("Your library is empty.");
+      return;
+    }
+
+    lookedCardIds = library.slice(-amount).map((card) => card.instanceId);
+
+    pileZone = "look";
+    pileReturnFocus = get<HTMLButtonElement>("practice-look-many");
+
+    renderPileList();
+    pileDialog.showModal();
+  });
 
   get("practice-search").addEventListener("click", () => {
     if (!ready) return;
@@ -2314,6 +2402,7 @@ import Layout from "@/layouts/Layout.astro";
 
   pileDialog.addEventListener("close", () => {
     pileZone = null;
+    lookedCardIds = [];
 
     if (ready) {
       if (pileReturnFocus?.isConnected) {
@@ -3550,5 +3639,17 @@ import Layout from "@/layouts/Layout.astro";
 
   .library-actions {
     margin-block: 0.75rem;
+  }
+
+  :global(.look-order-controls) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  :global(.look-order-controls > button) {
+    flex: 1;
+    padding: 0.4rem;
+    font-size: 0.8rem;
   }
 </style>
