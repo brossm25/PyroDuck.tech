@@ -11,10 +11,6 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       <p id="deck-status" role="status">Loading deck…</p>
       <p id="deck-count"></p>
 
-      <p class="mt-4">
-        <a id="goldfish-deck" href="/mtg/goldfish" hidden> Goldfish deck → </a>
-      </p>
-
       <form id="deck-settings" class="panel" hidden>
         <h2>Deck details</h2>
         <label>Deck name<input name="name" required maxlength="100" /></label>
@@ -170,9 +166,20 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
           >
           </div>
 
-          <button id="refresh-deck-data" type="button" hidden>
-            Refresh card data
-          </button>
+          <div class="deck-play-actions">
+            <button id="refresh-deck-data" type="button" hidden>
+              Refresh card data
+            </button>
+
+            <a
+              id="goldfish-deck"
+              class="goldfish-button"
+              href="/mtg/goldfish"
+              hidden
+            >
+              Goldfish deck →
+            </a>
+          </div>
           <p id="deck-data-status" class="muted" role="status"></p>
         </section>
       </div>
@@ -2922,5 +2929,55 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     margin-block: 1rem 0.5rem;
     font-size: 1.15rem;
     font-weight: 700;
+  }
+
+  .deck-play-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .goldfish-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .goldfish-button[hidden] {
+    display: none;
+  }
+
+  .goldfish-button:hover {
+    background: #b5fb14;
+    border-color: #b5fb14;
+  }
+
+  .goldfish-button:focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  .deck-play-actions a.goldfish-button,
+  .deck-play-actions a.goldfish-button:visited {
+    color: #000;
+  }
+
+  .deck-play-actions > #refresh-deck-data,
+  .deck-play-actions > a.goldfish-button {
+    margin: 0;
+    box-sizing: border-box;
+    height: 46px;
+    padding: 0.65rem 1rem;
+    line-height: 1.2;
   }
 </style>
