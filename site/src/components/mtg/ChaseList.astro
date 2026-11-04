@@ -63,6 +63,28 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
   </ul>
 </section>
 
+<button
+  type="button"
+  class="chase-back-top"
+  aria-label="Back to the top of your chase list"
+  hidden
+>
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 19V5M5 12l7-7 7 7"></path>
+  </svg>
+  <span>Chase top</span>
+</button>
+
 <dialog class="chase-preview" aria-labelledby="chase-preview-title">
   <div class="chase-preview-content">
     <button
@@ -287,6 +309,50 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
   }
 
   chaseSearchInput?.addEventListener("input", () => findChaseCard(true));
+
+  const chaseBackTop =
+    document.querySelector<HTMLButtonElement>(".chase-back-top");
+
+  function updateChaseBackTop() {
+    if (!chaseBackTop || !list || !chaseSearch) return;
+
+    const bounds = list.getBoundingClientRect();
+    chaseBackTop.hidden =
+      chaseSearch.hidden || bounds.top > -200 || bounds.bottom < 0;
+  }
+
+  chaseBackTop?.addEventListener("click", () => {
+    if (!chaseSearch) return;
+
+    const header = document.querySelector<HTMLElement>("header");
+    const position = header ? getComputedStyle(header).position : "";
+    const headerHeight =
+      header && (position === "sticky" || position === "fixed")
+        ? header.getBoundingClientRect().height
+        : 0;
+
+    const target = document.querySelector<HTMLElement>(".chase-letter-nav");
+    if (!target) return;
+
+    chaseSearchInput?.focus({ preventScroll: true });
+
+    window.scrollTo({
+      top: Math.max(
+        0,
+        window.scrollY +
+          target.getBoundingClientRect().top -
+          headerHeight -
+          chaseSearch.getBoundingClientRect().height -
+          24,
+      ),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
+  });
+
+  window.addEventListener("scroll", updateChaseBackTop, { passive: true });
+  window.addEventListener("resize", updateChaseBackTop);
 
   const chaseHeader = document.querySelector<HTMLElement>("header");
 
@@ -726,6 +792,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
     if (chaseSearch) chaseSearch.hidden = cards.length === 0;
     findChaseCard();
+    updateChaseBackTop();
 
     syncButtons();
   }
@@ -950,6 +1017,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     clearTotal();
     if (letterNav) letterNav.hidden = true;
     if (chaseSearch) chaseSearch.hidden = true;
+    if (chaseBackTop) chaseBackTop.hidden = true;
     if (chaseSearchInput) chaseSearchInput.value = "";
     if (chaseSearchResult) chaseSearchResult.textContent = "";
     setPriceStatus("");
@@ -1073,6 +1141,41 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 </script>
 
 <style>
+  .chase-back-top[hidden] {
+    display: none;
+  }
+
+  .chase-back-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(5rem + env(safe-area-inset-bottom));
+    z-index: 25;
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid var(--color-pyroduck-lime);
+    border-radius: 999px;
+    background: var(--color-pyroduck-afterdark);
+    color: var(--color-pyroduck-lime);
+    font: inherit;
+    font-weight: 700;
+    box-shadow: 0 4px 16px #0009;
+    cursor: pointer;
+  }
+
+  .chase-back-top:hover {
+    background: var(--color-pyroduck-lime);
+    color: var(--color-pyroduck-void);
+  }
+
+  .chase-back-top:focus-visible {
+    outline: 2px solid var(--color-pyroduck-plasma);
+    outline-offset: 4px;
+  }
+
   .chase-search[hidden] {
     display: none;
   }
