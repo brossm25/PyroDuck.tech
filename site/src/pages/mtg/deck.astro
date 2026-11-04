@@ -7,207 +7,211 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   <section class="px-6 py-12 sm:py-16" aria-labelledby="deck-heading">
     <div class="deck-editor mx-auto max-w-5xl">
       <a href="/mtg/decks">← Your decks</a>
+      <p id="deck-owner-label" class="mt-6 font-semibold" hidden></p>
       <h1 id="deck-heading" class="mt-8 text-4xl font-bold">Commander deck</h1>
       <p id="deck-status" role="status">Loading deck…</p>
       <p id="deck-count"></p>
 
-      <form id="deck-settings" class="panel" hidden>
-        <h2>Deck details</h2>
-        <label>Deck name<input name="name" required maxlength="100" /></label>
-        <label
-          >Description<textarea name="description" maxlength="5000" rows="3"
-          ></textarea></label
-        >
-        <label
-          >Who can view this deck?
-          <select name="visibility">
-            <option value="private">Private — only you</option>
-            <option value="friends">Friends — accepted friends</option>
-            <option value="public">Public — anyone with the link</option>
-          </select>
-        </label>
+      <div id="deck-content" hidden>
+        <form id="deck-settings" class="panel" hidden>
+          <h2>Deck details</h2>
+          <label>Deck name<input name="name" required maxlength="100" /></label>
+          <label
+            >Description<textarea name="description" maxlength="5000" rows="3"
+            ></textarea></label
+          >
+          <label
+            >Who can view this deck?
+            <select name="visibility">
+              <option value="private">Private — only you</option>
+              <option value="friends">Friends — accepted friends</option>
+              <option value="public">Public — anyone with the link</option>
+            </select>
+          </label>
 
-        <label>
-          Deck category
-          <select name="is_concept">
-            <option value="false">Regular deck</option>
-            <option value="true">Concept deck — digital build / idea</option>
-          </select>
-        </label>
+          <label>
+            Deck category
+            <select name="is_concept">
+              <option value="false">Regular deck</option>
+              <option value="true">Concept deck — digital build / idea</option>
+            </select>
+          </label>
 
-        <button type="submit">Save details</button>
-        <button id="delete-deck" type="button"> Delete entire deck </button>
-      </form>
-
-      <div id="deck-add" class="panel" hidden>
-        <h2>Add a card</h2>
-        <DeckImport />
-        <form id="deck-search">
-          <label for="deck-query">Card name or Scryfall search</label>
-          <div class="control-row">
-            <input
-              id="deck-query"
-              name="query"
-              required
-              maxlength="150"
-              placeholder="Try Atla Palani"
-            />
-            <button type="submit">Search</button>
-          </div>
+          <button type="submit">Save details</button>
+          <button id="delete-deck" type="button"> Delete entire deck </button>
         </form>
-        <p id="deck-search-status" role="status"></p>
-        <ul id="deck-results" class="card-grid"></ul>
-        <p class="muted">
-          Card information and images provided by <a
-            href="https://scryfall.com"
-            target="_blank"
-            rel="noopener noreferrer">Scryfall ↗</a
-          >.
-        </p>
-      </div>
 
-      <div class="deck-summary">
-        <section class="panel" aria-labelledby="commander-heading">
-          <h2 id="commander-heading">Commanders</h2>
-          <ul id="deck-commanders" class="card-grid"></ul>
-        </section>
+        <div id="deck-add" class="panel" hidden>
+          <h2>Add a card</h2>
+          <DeckImport />
+          <form id="deck-search">
+            <label for="deck-query">Card name or Scryfall search</label>
+            <div class="control-row">
+              <input
+                id="deck-query"
+                name="query"
+                required
+                maxlength="150"
+                placeholder="Try Atla Palani"
+              />
+              <button type="submit">Search</button>
+            </div>
+          </form>
+          <p id="deck-search-status" role="status"></p>
+          <ul id="deck-results" class="card-grid"></ul>
+          <p class="muted">
+            Card information and images provided by <a
+              href="https://scryfall.com"
+              target="_blank"
+              rel="noopener noreferrer">Scryfall ↗</a
+            >.
+          </p>
+        </div>
 
-        <section class="panel overview-panel" aria-label="Deck overview">
-          <div
-            class="overview-tabs"
-            role="tablist"
-            aria-label="Deck information"
-          >
-            <button
-              id="tab-overview"
-              type="button"
-              role="tab"
-              aria-selected="true"
-              aria-controls="panel-overview"
-              tabindex="0">Overview</button
+        <div class="deck-summary">
+          <section class="panel" aria-labelledby="commander-heading">
+            <h2 id="commander-heading">Commanders</h2>
+            <ul id="deck-commanders" class="card-grid"></ul>
+          </section>
+
+          <section class="panel overview-panel" aria-label="Deck overview">
+            <div
+              class="overview-tabs"
+              role="tablist"
+              aria-label="Deck information"
             >
-            <button
-              id="tab-value"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-value"
-              tabindex="-1">Value</button
+              <button
+                id="tab-overview"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="panel-overview"
+                tabindex="0">Overview</button
+              >
+              <button
+                id="tab-value"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-value"
+                tabindex="-1">Value</button
+              >
+              <button
+                id="tab-power"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-power"
+                tabindex="-1">Power indicators</button
+              >
+              <button
+                id="tab-mana"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-mana"
+                tabindex="-1">Mana</button
+              >
+              <button
+                id="tab-checks"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-checks"
+                tabindex="-1">Deck checks</button
+              >
+            </div>
+
+            <div
+              id="panel-overview"
+              role="tabpanel"
+              aria-labelledby="tab-overview"
+              tabindex="0"
             >
-            <button
-              id="tab-power"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-power"
-              tabindex="-1">Power indicators</button
-            >
-            <button
-              id="tab-mana"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-mana"
-              tabindex="-1">Mana</button
-            >
-            <button
-              id="tab-checks"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="panel-checks"
-              tabindex="-1">Deck checks</button
-            >
-          </div>
-
-          <div
-            id="panel-overview"
-            role="tabpanel"
-            aria-labelledby="tab-overview"
-            tabindex="0"
-          >
-          </div>
-          <div
-            id="panel-value"
-            role="tabpanel"
-            aria-labelledby="tab-value"
-            tabindex="0"
-            hidden
-          >
-          </div>
-          <div
-            id="panel-mana"
-            role="tabpanel"
-            aria-labelledby="tab-mana"
-            tabindex="0"
-            hidden
-          >
-          </div>
-
-          <div
-            id="panel-checks"
-            role="tabpanel"
-            aria-labelledby="tab-checks"
-            tabindex="0"
-            hidden
-          >
-            <p class="muted">
-              Deck checks provide guidance. You can still add cards and save
-              your deck when warnings are present.
-            </p>
-          </div>
-
-          <div
-            id="panel-power"
-            role="tabpanel"
-            aria-labelledby="tab-power"
-            tabindex="0"
-            hidden
-          >
-          </div>
-
-          <div class="deck-play-actions">
-            <button id="refresh-deck-data" type="button" hidden>
-              Refresh card data
-            </button>
-
-            <a
-              id="goldfish-deck"
-              class="goldfish-button"
-              href="/mtg/goldfish"
+            </div>
+            <div
+              id="panel-value"
+              role="tabpanel"
+              aria-labelledby="tab-value"
+              tabindex="0"
               hidden
             >
-              Goldfish deck →
-            </a>
-          </div>
-          <p id="deck-data-status" class="muted" role="status"></p>
-        </section>
+            </div>
+            <div
+              id="panel-mana"
+              role="tabpanel"
+              aria-labelledby="tab-mana"
+              tabindex="0"
+              hidden
+            >
+            </div>
+
+            <div
+              id="panel-checks"
+              role="tabpanel"
+              aria-labelledby="tab-checks"
+              tabindex="0"
+              hidden
+            >
+              <p class="muted">
+                Deck checks provide guidance. You can still add cards and save
+                your deck when warnings are present.
+              </p>
+            </div>
+
+            <div
+              id="panel-power"
+              role="tabpanel"
+              aria-labelledby="tab-power"
+              tabindex="0"
+              hidden
+            >
+            </div>
+
+            <div class="deck-play-actions">
+              <button id="refresh-deck-data" type="button" hidden>
+                Refresh card data
+              </button>
+
+              <a
+                id="goldfish-deck"
+                class="goldfish-button"
+                href="/mtg/goldfish"
+                hidden
+              >
+                Goldfish deck →
+              </a>
+            </div>
+            <p id="deck-data-status" class="muted" role="status"></p>
+          </section>
+        </div>
+
+        <div class="deck-view-controls" role="group" aria-label="Card display">
+          <span>Card view</span>
+          <button
+            type="button"
+            data-card-view="compact"
+            aria-controls="deck-groups"
+            aria-pressed="true">Compact list</button
+          >
+          <button
+            type="button"
+            data-card-view="grid"
+            aria-controls="deck-groups"
+            aria-pressed="false">Grid</button
+          >
+        </div>
+
+        <div id="deck-groups" data-view="compact"></div>
+
+        <p class="muted">
+          The deck count includes commanders. Open Deck checks to review
+          warnings about deck size, color restrictions, copy limits, commander
+          selections, and saved Commander legality. Some special cases are not
+          fully checked. Warnings do not prevent saving; your pod can agree to
+          house rules.
+        </p>
       </div>
-
-      <div class="deck-view-controls" role="group" aria-label="Card display">
-        <span>Card view</span>
-        <button
-          type="button"
-          data-card-view="compact"
-          aria-controls="deck-groups"
-          aria-pressed="true">Compact list</button
-        >
-        <button
-          type="button"
-          data-card-view="grid"
-          aria-controls="deck-groups"
-          aria-pressed="false">Grid</button
-        >
-      </div>
-
-      <div id="deck-groups" data-view="compact"></div>
-
-      <p class="muted">
-        The deck count includes commanders. Open Deck checks to review warnings
-        about deck size, color restrictions, copy limits, commander selections,
-        and saved Commander legality. Some special cases are not fully checked.
-        Warnings do not prevent saving; your pod can agree to house rules.
-      </p>
     </div>
   </section>
 
@@ -400,8 +404,8 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 
   if (deckId) {
     goldfishLink.href = `/mtg/goldfish?id=${encodeURIComponent(deckId)}`;
-    goldfishLink.hidden = false;
   }
+
   let deck: Deck | null = null;
   let owner = false;
   let busy = false;
@@ -1282,6 +1286,10 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   }
 
   async function load() {
+    get("deck-owner-label").hidden = true;
+    get("deck-owner-label").textContent = "";
+    get("deck-content").hidden = true;
+    goldfishLink.hidden = true;
     resetDeckCombos();
     editingPrintingEntry = null;
     deckImporter?.reset();
@@ -1350,10 +1358,36 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       settings.hidden = !owner;
       get("deck-add").hidden = !owner;
       await loadEntries();
-      if (current === version)
-        message(
-          owner ? "Your changes save to this deck." : "Viewing a shared deck.",
-        );
+      if (current !== version) return;
+
+      try {
+        const { data: ownerLabel, error: ownerLabelError } = await supabase
+          .rpc("get_deck_owner_label", { p_deck_id: deckId })
+          .maybeSingle<{
+            username: string | null;
+            display_name: string | null;
+          }>();
+
+        if (current !== version) return;
+
+        if (!ownerLabelError && ownerLabel) {
+          const name =
+            ownerLabel.display_name?.trim() || ownerLabel.username?.trim();
+
+          if (name) {
+            get("deck-owner-label").textContent = `${name}’s deck`;
+            get("deck-owner-label").hidden = false;
+          }
+        }
+      } catch {
+        if (current !== version) return;
+      }
+
+      get("deck-content").hidden = false;
+      goldfishLink.hidden = false;
+      message(
+        owner ? "Your changes save to this deck." : "Viewing a shared deck.",
+      );
     } catch (error) {
       if (current === version) message(errorText(error));
     } finally {
@@ -2979,5 +3013,9 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     height: 46px;
     padding: 0.65rem 1rem;
     line-height: 1.2;
+  }
+
+  #deck-content[hidden] {
+    display: none;
   }
 </style>
