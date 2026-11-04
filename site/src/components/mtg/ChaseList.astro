@@ -35,6 +35,19 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 
   <p class="chase-price-status mt-3 text-sm text-brand-muted" role="status"></p>
 
+  <div class="chase-search" hidden>
+    <label for="chase-search-input">Find a card on your chase list</label>
+    <input
+      id="chase-search-input"
+      type="search"
+      placeholder="Start typing a card name…"
+      autocomplete="off"
+      spellcheck="false"
+      aria-controls="chase-search-result"
+    />
+    <p id="chase-search-result" role="status" aria-live="polite"></p>
+  </div>
+
   <nav
     class="chase-letter-nav mt-6"
     aria-label="Jump to a chase-list letter"
@@ -203,6 +216,97 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     numeric: true,
   });
   const alphabet = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+
+  const chaseSearch = document.querySelector<HTMLElement>(".chase-search");
+  const chaseSearchInput = document.querySelector<HTMLInputElement>(
+    "#chase-search-input",
+  );
+  const chaseSearchResult = document.querySelector<HTMLElement>(
+    "#chase-search-result",
+  );
+
+  function searchName(value: string) {
+    return value
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  }
+
+  function findChaseCard(scroll = false) {
+    if (!list || !chaseSearchInput || !chaseSearchResult) return;
+
+    const query = searchName(chaseSearchInput.value);
+    const items = Array.from(
+      list.querySelectorAll<HTMLElement>(".chase-list-card"),
+    );
+
+    for (const item of items) item.classList.remove("chase-search-match");
+    chaseSearchResult.textContent = "";
+    if (!query) return;
+
+    const matches = items.filter((item) =>
+      searchName(item.dataset.cardName ?? "").includes(query),
+    );
+    const match =
+      matches.find((item) =>
+        searchName(item.dataset.cardName ?? "").startsWith(query),
+      ) ?? matches[0];
+
+    if (!match) {
+      chaseSearchResult.textContent = "Not on your chase list.";
+      return;
+    }
+
+    match.classList.add("chase-search-match");
+    chaseSearchResult.textContent =
+      `${match.dataset.cardName}: ${matches.length} matching ` +
+      `${matches.length === 1 ? "entry" : "entries"}.`;
+
+    if (!scroll) return;
+
+    const header = document.querySelector<HTMLElement>("header");
+    const position = header ? getComputedStyle(header).position : "";
+    const headerHeight =
+      header && (position === "sticky" || position === "fixed")
+        ? header.getBoundingClientRect().height
+        : 0;
+    const searchHeight = chaseSearch?.getBoundingClientRect().height ?? 0;
+
+    window.scrollTo({
+      top: Math.max(
+        0,
+        window.scrollY +
+          match.getBoundingClientRect().top -
+          headerHeight -
+          searchHeight -
+          24,
+      ),
+      behavior: "instant",
+    });
+  }
+
+  chaseSearchInput?.addEventListener("input", () => findChaseCard(true));
+
+  const chaseHeader = document.querySelector<HTMLElement>("header");
+
+  function updateChaseSearchTop() {
+    if (!chaseSearch) return;
+
+    const position = chaseHeader ? getComputedStyle(chaseHeader).position : "";
+    const height =
+      chaseHeader && (position === "sticky" || position === "fixed")
+        ? chaseHeader.getBoundingClientRect().height
+        : 0;
+
+    chaseSearch.style.top = `${height + 8}px`;
+  }
+
+  if (chaseHeader) {
+    new ResizeObserver(updateChaseSearchTop).observe(chaseHeader);
+  }
+  window.addEventListener("resize", updateChaseSearchTop);
+  updateChaseSearchTop();
 
   function cardLetter(name: string) {
     const first = name
@@ -467,6 +571,7 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
       }
       const item = document.createElement("li");
       item.className = "chase-list-card";
+      item.dataset.cardName = card.name;
 
       const imageUrl = safeCardImage(card.image_url);
 
@@ -618,6 +723,9 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
       item.append(actions);
       list.append(item);
     }
+
+    if (chaseSearch) chaseSearch.hidden = cards.length === 0;
+    findChaseCard();
 
     syncButtons();
   }
@@ -841,6 +949,9 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     loading = true;
     clearTotal();
     if (letterNav) letterNav.hidden = true;
+    if (chaseSearch) chaseSearch.hidden = true;
+    if (chaseSearchInput) chaseSearchInput.value = "";
+    if (chaseSearchResult) chaseSearchResult.textContent = "";
     setPriceStatus("");
     syncButtons();
 
@@ -939,6 +1050,9 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
     clearTotal();
     setPriceStatus("");
     if (letterNav) letterNav.hidden = true;
+    if (chaseSearch) chaseSearch.hidden = true;
+    if (chaseSearchInput) chaseSearchInput.value = "";
+    if (chaseSearchResult) chaseSearchResult.textContent = "";
     if (preview?.open) preview.close();
     setStatus(
       nextUserId
@@ -959,6 +1073,56 @@ import SaleMatches from "@/components/mtg/SaleMatches.astro";
 </script>
 
 <style>
+  .chase-search[hidden] {
+    display: none;
+  }
+
+  .chase-search {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+    margin-top: 1.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.75rem;
+    background: var(--color-pyroduck-afterdark);
+    box-shadow: 0 4px 16px #0008;
+  }
+
+  .chase-search label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-weight: 600;
+  }
+
+  .chase-search input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--color-pyroduck-plasma);
+    border-radius: 0.5rem;
+    background: var(--color-pyroduck-void);
+    color: var(--color-brand-text);
+    font-size: 1rem;
+  }
+
+  .chase-search input:focus-visible {
+    outline: 2px solid var(--color-pyroduck-lime);
+    outline-offset: 2px;
+  }
+
+  #chase-search-result {
+    min-height: 1.25rem;
+    margin: 0.375rem 0 0;
+    color: var(--color-brand-muted);
+    font-size: 0.875rem;
+  }
+
+  .chase-list-items :global(.chase-search-match) {
+    outline: 3px solid var(--color-pyroduck-lime);
+    outline-offset: 3px;
+  }
+
   .chase-list-items :global(.chase-card-preview) {
     display: block;
     width: 100%;
