@@ -181,6 +181,7 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
               >
                 Goldfish deck →
               </a>
+              <button id="export-deck" type="button"> Export deck </button>
             </div>
             <p id="deck-data-status" class="muted" role="status"></p>
           </section>
@@ -313,6 +314,33 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
       <button id="picker-save" type="submit" disabled>Add to deck</button>
     </form>
   </dialog>
+  <dialog id="deck-export" aria-labelledby="deck-export-heading">
+    <form method="dialog">
+      <button type="submit">Close ×</button>
+    </form>
+
+    <h2 id="deck-export-heading">Export deck</h2>
+    <p>
+      Copy or download this list to import into another app. Includes commanders
+      and main-deck cards.
+    </p>
+
+    <label for="deck-export-format">Export format</label>
+    <select id="deck-export-format">
+      <option value="simple">Simple list: card names and quantities</option>
+      <option value="manabox"> ManaBox: exact printings and finishes </option>
+    </select>
+    <label for="deck-export-text">Deck list</label>
+    <textarea id="deck-export-text" rows="16" readonly spellcheck="false"
+    ></textarea>
+
+    <div class="deck-play-actions">
+      <button id="copy-deck-export" type="button">Copy list</button>
+      <button id="download-deck-export" type="button">Download .txt</button>
+    </div>
+
+    <p id="deck-export-status" role="status"></p>
+  </dialog>
 </Layout>
 
 <script>
@@ -411,6 +439,247 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   let busy = false;
   let version = 0;
   let savedEntries: Entry[] = [];
+  const exportDialog = get<HTMLDialogElement>("deck-export");
+  const exportText = get<HTMLTextAreaElement>("deck-export-text");
+  const exportStatus = get("deck-export-status");
+
+  const exportFormat = get<HTMLSelectElement>("deck-export-format");
+
+  interface ExportPrinting {
+    id: string;
+    name: string;
+    set: string;
+    collector_number: string;
+  }
+
+  const exportPrintings = new Map<string, ExportPrinting>();
+
+  function manaBoxExportText(entries: Entry[]) {
+    function linesFor(role: string) {
+      const grouped = new Map<string, { text: string; quantity: number }>();
+
+      for (const entry of entries) {
+        if (entry.card_role !== role) continue;
+
+        const printing = exportPrintings.get(entry.scryfall_id);
+        if (!printing) {
+          throw new Error(`Missing printing details for ${entry.name}.`);
+        }
+
+        const finish =
+          entry.finish === "foil"
+            ? " *F*"
+            : entry.finish === "etched"
+              ? " *E*"
+              : entry.finish === "nonfoil"
+                ? ""
+                : null;
+
+        if (finish === null) {
+          throw new Error(`Unknown finish for ${entry.name}.`);
+        }
+
+        const key = JSON.stringify([entry.scryfall_id, entry.finish]);
+        const existing = grouped.get(key);
+
+        if (existing) {
+          existing.quantity += entry.quantity;
+        } else {
+          grouped.set(key, {
+            text:
+              `${printing.name} (${printing.set.toUpperCase()}) ` +
+              `${printing.collector_number}${finish}`,
+            quantity: entry.quantity,
+          });
+        }
+      }
+
+      return [...grouped.values()]
+        .sort((a, b) => a.text.localeCompare(b.text))
+        .map((entry) => `${entry.quantity} ${entry.text}`);
+    }
+
+    const commanders = linesFor("commander");
+    const main = linesFor("main");
+    const sections: string[] = [];
+
+    if (commanders.length) {
+      sections.push(["// COMMANDER", ...commanders].join("\n"));
+    }
+    if (main.length) sections.push(main.join("\n"));
+
+    return sections.length ? sections.join("\n\n") + "\n" : "";
+  }
+
+  function deckExportText() {
+    function linesFor(role: string) {
+      const quantities = new Map<string, number>();
+
+      for (const entry of savedEntries) {
+        if (entry.card_role !== role) continue;
+        quantities.set(
+          entry.name,
+          (quantities.get(entry.name) ?? 0) + entry.quantity,
+        );
+      }
+
+      return [...quantities]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, quantity]) => `${quantity} ${name}`);
+    }
+
+    const commanders = linesFor("commander");
+    const main = linesFor("main");
+    const sections: string[] = [];
+
+    if (commanders.length) {
+      sections.push(["[COMMANDER]", ...commanders].join("\n"));
+    }
+    if (main.length) {
+      sections.push(["[MAINBOARD]", ...main].join("\n"));
+    }
+
+    return sections.length ? sections.join("\n\n") + "\n" : "";
+  }
+
+  let exportRequest = 0;
+
+  async function updateDeckExport() {
+    const request = ++exportRequest;
+    const deckVersion = version;
+    const entries = savedEntries.filter(
+      (entry) => entry.card_role === "commander" || entry.card_role === "main",
+    );
+    const isCurrent = () =>
+      request === exportRequest && deckVersion === version && exportDialog.open;
+
+    exportText.value = "";
+    exportStatus.textContent = "";
+
+    if (!entries.length) {
+      exportStatus.textContent = "No commanders or main-deck cards to export.";
+      return;
+    }
+
+    if (exportFormat.value === "simple") {
+      exportText.value = deckExportText();
+      return;
+    }
+
+    const ids = [...new Set(entries.map((entry) => entry.scryfall_id))];
+    const missing = ids.filter((id) => !exportPrintings.has(id));
+
+    try {
+      for (const [index, id] of missing.entries()) {
+        if (!isCurrent()) return;
+
+        exportStatus.textContent = `Loading printing details ${index + 1} of ${missing.length}…`;
+
+        if (
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            id,
+          )
+        ) {
+          throw new Error("A card has an invalid printing ID.");
+        }
+
+        const response = await fetch(
+          `https://api.scryfall.com/cards/${encodeURIComponent(id)}`,
+          {
+            headers: { Accept: "application/json" },
+            signal: AbortSignal.timeout(15000),
+          },
+        );
+
+        if (!isCurrent()) return;
+        if (!response.ok) {
+          throw new Error("Couldn’t load printing details. Try again shortly.");
+        }
+
+        const printing: ExportPrinting = await response.json();
+
+        if (
+          printing.id !== id ||
+          typeof printing.name !== "string" ||
+          typeof printing.set !== "string" ||
+          !printing.set ||
+          typeof printing.collector_number !== "string"
+        ) {
+          throw new Error("Incomplete printing details returned.");
+        }
+
+        exportPrintings.set(id, printing);
+
+        // Space requests to avoid sending them all at once.
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      }
+
+      if (!isCurrent()) return;
+
+      exportText.value = manaBoxExportText(entries);
+      exportStatus.textContent =
+        "Ready. Exact printings and finishes included.";
+    } catch (error) {
+      if (!isCurrent()) return;
+
+      exportText.value = "";
+      exportStatus.textContent =
+        error instanceof Error ? error.message : "Couldn’t prepare export.";
+    }
+  }
+
+  get("export-deck").addEventListener("click", () => {
+    if (!deck || get("deck-content").hidden) return;
+
+    exportDialog.showModal();
+    void updateDeckExport();
+  });
+
+  exportFormat.addEventListener("change", () => {
+    if (exportDialog.open) void updateDeckExport();
+  });
+
+  get("copy-deck-export").addEventListener("click", async () => {
+    if (!exportText.value) return;
+
+    try {
+      await navigator.clipboard.writeText(exportText.value);
+      if (exportDialog.open) exportStatus.textContent = "Deck list copied.";
+    } catch {
+      if (!exportDialog.open) return;
+      exportText.focus();
+      exportText.select();
+      exportStatus.textContent =
+        "Couldn’t copy automatically. Press Ctrl+C to copy the selected list.";
+    }
+  });
+
+  get("download-deck-export").addEventListener("click", () => {
+    if (!deck || !exportText.value) return;
+
+    const blob = new Blob([exportText.value], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const filename =
+      deck.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") ||
+      "deck";
+
+    link.href = url;
+    link.download = `${filename}.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    exportStatus.textContent = "Download requested.";
+  });
+
+  exportDialog.addEventListener("close", () => {
+    exportRequest++;
+    exportText.value = "";
+    exportStatus.textContent = "";
+  });
   let editingPrintingEntry: Entry | null = null;
 
   picker.addEventListener("close", () => {
@@ -1286,6 +1555,10 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
   }
 
   async function load() {
+    exportRequest++;
+    if (exportDialog.open) exportDialog.close();
+    exportText.value = "";
+    exportStatus.textContent = "";
     get("deck-owner-label").hidden = true;
     get("deck-owner-label").textContent = "";
     get("deck-content").hidden = true;
@@ -1901,6 +2174,77 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
 </script>
 
 <style>
+  #deck-export {
+    box-sizing: border-box;
+    width: min(640px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid #a444fc;
+    border-radius: 1rem;
+    background: #10071b;
+    color: #f7f3ff;
+  }
+
+  #deck-export::backdrop {
+    background: rgb(0 0 0 / 80%);
+  }
+
+  #deck-export form {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  #deck-export h2 {
+    margin: 1rem 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  #deck-export label {
+    display: block;
+    margin-top: 1rem;
+    font-weight: 600;
+  }
+
+  #deck-export-text {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    margin: 0.5rem 0 1rem;
+    padding: 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+    font-family: monospace;
+    font-size: 1rem;
+    resize: vertical;
+  }
+
+  #deck-export button {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #deck-export button:focus-visible,
+  #deck-export-text:focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  #deck-export-status {
+    min-height: 1.5rem;
+    margin-top: 0.75rem;
+  }
+
   .deck-editor {
     color: var(--color-brand-text);
   }
