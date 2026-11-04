@@ -1,0 +1,370 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="My Collection">
+  <section class="px-6 py-12 sm:py-16" aria-labelledby="collection-heading">
+    <div class="mx-auto max-w-5xl text-brand-text">
+      <a
+        href="/mtg"
+        class="front-semibold text-pyroduck-plasma hover:text-pyroduck-lime"
+      >
+        ← BinderLink
+      </a>
+
+      <h1 id="collection-heading" class="mt-8 text-4xl font-bold">
+        Your collection.
+      </h1>
+
+      <p class="mt-4 max-w-2xl text-brand-muted">
+        Keep track of cards in your boxes, folders, and binders. Name each
+        location to match how you store your cards.
+      </p>
+
+      <p id="collection-status" class="mt-6 text-brand-muted" role="status">
+        Checking your sign-in.
+      </p>
+
+      <div id="collection-content" hidden>
+        <section class="storage-panel" aria-labelledby="location-heading">
+          <h2 id="locations-heading">Storage locations</h2>
+
+          <p class="text-brand-muted">
+            Start with a Dump box for unsorted cards, then add locationssuch as
+            Creature foil, X-creatures, or Lands.
+          </p>
+
+          <button id="create-dump-box" type="button" disabled>
+            Create Dump Box
+          </button>
+
+          <form id="create-location">
+            <label for="location-name">New location name</label>
+            <div class="storage-row">
+              <input
+                id="location-name"
+                name="name"
+                required
+                maxlength="100"
+                placeholder="For example: X-creatures"
+                disabled
+              />
+              <button type="submit" disabled>Add location</button>
+            </div>
+          </form>
+
+          <ul id="storage-locations"></ul>
+        </section>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { supabase } from "@/lib/supabase";
+  import { loadAllPages } from "@/lib/paginate";
+  import { createAccountChangeGuard } from "@/lib/authAccountGuard";
+
+  interface StorageLocation {
+    id: string;
+    name: string;
+    is_dump_box: boolean;
+  }
+
+  const get = <T extends HTMLElement>(id: string) =>
+    document.getElementById(id) as T;
+
+  const content = get("collection-content");
+  const status = get("collection-status");
+  const list = get<HTMLUListElement>("storage-locations");
+  const form = get<HTMLFormElement>("create-location");
+  const nameInput = get<HTMLInputElement>("location-name");
+  const addButton = form.querySelector<HTMLButtonElement>(
+    'button[type="submit"]',
+  )!;
+  const dumpButton = get<HTMLButtonElement>("create-dump-box");
+
+  let locations: StorageLocation[] = [];
+  let userId: string | null = null;
+  let version = 0;
+  let loading = true;
+  let saving = false;
+
+  function controls() {
+    const disabled = !userId || loading || saving;
+    nameInput.disabled = disabled;
+    addButton.disabled = disabled;
+    dumpButton.disabled =
+      disabled || locations.some((location) => location.is_dump_box);
+    dumpButton.textContent = locations.some((location) => location.is_dump_box)
+      ? "Dump box created"
+      : "Create Dump box";
+  }
+
+  function renderLocations() {
+    list.replaceChildren();
+
+    for (const location of [...locations].sort(
+      (a, b) =>
+        Number(b.is_dump_box) - Number(a.is_dump_box) ||
+        a.name.localeCompare(b.name),
+    )) {
+      const item = document.createElement("li");
+      const name = document.createElement("strong");
+      name.textContent = location.name;
+      item.append(name);
+
+      if (location.is_dump_box) {
+        const note = document.createElement("span");
+        note.textContent = " · Unsorted cards";
+        item.append(note);
+      }
+
+      list.append(item);
+    }
+  }
+
+  async function loadLocations() {
+    const current = ++version;
+    loading = true;
+    content.hidden = true;
+    locations = [];
+    list.replaceChildren();
+    controls();
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (current !== version) return;
+      if (sessionError) throw sessionError;
+
+      userId = session?.user.id ?? null;
+      if (!userId) {
+        status.textContent = "Sign in on BinderLink to manage your collection.";
+        return;
+      }
+
+      const targetUser = userId;
+      status.textContent = "Loading your storage locations…";
+
+      const data = await loadAllPages<StorageLocation>(
+        async (from, to) => {
+          const result = await supabase
+            .from("collection_locations")
+            .select("id, name, is_dump_box")
+            .eq("user_id", targetUser)
+            .order("id")
+            .range(from, to);
+
+          return {
+            data: result.data as StorageLocation[] | null,
+            error: result.error,
+          };
+        },
+        { isCurrent: () => current === version },
+      );
+
+      if (current !== version || data === null) return;
+
+      locations = data;
+      renderLocations();
+      content.hidden = false;
+      status.textContent = locations.length
+        ? "Your storage locations are private."
+        : "Create a Dump box or your first named location.";
+    } catch {
+      if (current !== version) return;
+      status.textContent =
+        "Couldn’t load your locations. Refresh to try again.";
+    } finally {
+      if (current === version) {
+        loading = false;
+        controls();
+      }
+    }
+  }
+
+  async function createLocation(name: string, isDumpBox: boolean) {
+    if (!userId || loading || saving) return;
+
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 100) {
+      status.textContent =
+        "Enter a location name between 1 and 100 characters.";
+      return;
+    }
+
+    const current = version;
+    const targetUser = userId;
+    saving = true;
+    controls();
+    status.textContent = "Creating location…";
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (current !== version) return;
+      if (sessionError || session?.user.id !== targetUser) {
+        status.textContent =
+          "Your sign-in changed. Refresh before trying again.";
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("collection_locations")
+        .insert({ name: trimmed, is_dump_box: isDumpBox })
+        .select("id, name, is_dump_box")
+        .single();
+
+      if (current !== version) return;
+
+      if (error) {
+        status.textContent =
+          error.code === "23505"
+            ? "That location name or Dump box already exists. Refresh your list."
+            : "Couldn’t create the location. Please try again.";
+        return;
+      }
+
+      locations.push(data as StorageLocation);
+      renderLocations();
+      if (!isDumpBox) form.reset();
+      status.textContent = `Created “${trimmed}”.`;
+    } catch {
+      if (current === version) {
+        status.textContent = "Couldn’t create the location. Please try again.";
+      }
+    } finally {
+      if (current === version) {
+        saving = false;
+        controls();
+      }
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createLocation(nameInput.value, false);
+  });
+
+  dumpButton.addEventListener("click", () => {
+    void createLocation("Dump box", true);
+  });
+
+  const accountChanged = createAccountChangeGuard(true);
+  let authTimer: number | undefined;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (!accountChanged(event, session)) return;
+
+    version++;
+    userId = session?.user.id ?? null;
+    loading = true;
+    saving = false;
+    locations = [];
+    list.replaceChildren();
+    form.reset();
+    content.hidden = true;
+    status.textContent = userId
+      ? "Loading your collection…"
+      : "Sign in on BinderLink to manage your collection.";
+    controls();
+
+    window.clearTimeout(authTimer);
+    authTimer = window.setTimeout(() => void loadLocations(), 0);
+  });
+</script>
+
+<style>
+  #collection-content[hidden] {
+    display: none;
+  }
+
+  .storage-panel {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    border: 1px solid #a444fc55;
+    border-radius: 1rem;
+    background: #10071b;
+  }
+
+  .storage-panel h2 {
+    margin-bottom: 0.75rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .storage-panel form {
+    margin-top: 1.5rem;
+  }
+
+  .storage-panel label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+
+  .storage-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .storage-panel input {
+    flex: 1 1 220px;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+  }
+
+  .storage-panel button {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #create-dump-box {
+    margin-top: 1rem;
+  }
+
+  .storage-panel button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .storage-panel input:focus-visible,
+  .storage-panel button:focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  #storage-locations {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  #storage-locations :global(li) {
+    padding: 1rem;
+    border: 1px solid #a444fc55;
+    border-radius: 0.75rem;
+    background: #000;
+    overflow-wrap: anywhere;
+  }
+</style>
