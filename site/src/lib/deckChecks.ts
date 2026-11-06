@@ -90,14 +90,14 @@ function commanderEligibility(
     return "unknown";
   }
 
-  // Combined face data needs a separate check so a back face does not
-  // accidentally qualify a card whose front face cannot be a commander.
-  if (entry.type_line.includes(" // ")) return "unknown";
-
-  const [types, subtypes = ""] = entry.type_line.split("—");
+  // Only the front face determines normal commander eligibility.
+  const combinedFaces = entry.type_line.includes(" // ");
+  const frontType = entry.type_line.split(" // ")[0];
+  const [types, subtypes = ""] = frontType.split("—");
   const legendary = /\bLegendary\b/.test(types);
 
   if (
+    !combinedFaces &&
     entry.oracle_text
       .toLowerCase()
       .includes(`${entry.name.toLowerCase()} can be your commander.`)

@@ -375,6 +375,48 @@ export function setupDeckImport(options: Options) {
         controls.append(versions);
       }
 
+      if (!item.card) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.textContent = "Retry lookup";
+
+        retry.addEventListener("click", async () => {
+          if (working || saving || !options.canEdit()) return;
+
+          const current = generation;
+          const abort = new AbortController();
+          controller = abort;
+          working = true;
+          update();
+          status.textContent = `Retrying ${item.row.name}…`;
+
+          try {
+            const matched = await matchImportRow(item.row, abort.signal);
+            if (current !== generation) return;
+
+            Object.assign(item, matched);
+            status.textContent = matched.card
+              ? `Matched ${matched.card.name}. Review its finish and quantity.`
+              : (matched.issue ?? "No match found.");
+          } catch (error) {
+            if (current === generation && !abort.signal.aborted) {
+              item.issue =
+                error instanceof Error
+                  ? `Lookup failed: ${error.message}`
+                  : "Lookup failed. Please retry.";
+              status.textContent = item.issue;
+            }
+          } finally {
+            if (current === generation) {
+              working = false;
+              render();
+            }
+          }
+        });
+
+        controls.append(retry);
+      }
+
       li.append(controls);
       results.append(li);
     });
@@ -579,14 +621,32 @@ export function setupDeckImport(options: Options) {
         abort.signal.throwIfAborted();
         status.textContent = `Matching ${index + 1} of ${parsed.rows.length}: ${row.name}`;
 
-        const matched = await matchImportRow(row, abort.signal);
-        if (current !== generation) return;
+        try {
+          const matched = await matchImportRow(row, abort.signal);
+          if (current !== generation) return;
 
-        matches.push({
-          ...matched,
-          included: true,
-          isProxy: row.isProxy ?? false,
-        });
+          matches.push({
+            ...matched,
+            included: true,
+            isProxy: row.isProxy ?? false,
+          });
+        } catch (error) {
+          abort.signal.throwIfAborted();
+          if (current !== generation) return;
+
+          matches.push({
+            row,
+            card: null,
+            finish: row.finish,
+            automaticPrinting: !row.set || !row.collector,
+            issue:
+              error instanceof Error
+                ? `Lookup failed: ${error.message}`
+                : "Lookup failed. Retry this card.",
+            included: true,
+            isProxy: row.isProxy ?? false,
+          });
+        }
 
         if (index < parsed.rows.length - 1) await pause();
       }

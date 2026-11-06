@@ -30,6 +30,82 @@ function quoted(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+let nextRequestAt = 0;
+
+async function waitForRequest(delay: number, signal: AbortSignal) {
+  signal.throwIfAborted();
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, delay);
+
+    function abort() {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }
+
+    signal.addEventListener("abort", abort, { once: true });
+  });
+
+  signal.throwIfAborted();
+}
+
+async function fetchImportCard(url: URL, signal: AbortSignal) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    signal.throwIfAborted();
+
+    // Reserve a request slot, including retries.
+    const start = Math.max(Date.now(), nextRequestAt);
+    nextRequestAt = start + 250;
+    await waitForRequest(Math.max(0, start - Date.now()), signal);
+
+    let retryDelay = 1000 * 2 ** attempt;
+
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+        headers: { Accept: "application/json" },
+      });
+
+      signal.throwIfAborted();
+
+      const retryable =
+        response.status === 429 ||
+        response.status === 408 ||
+        response.status >= 500;
+
+      if (!retryable) return response;
+
+      const retryAfter = response.headers.get("Retry-After");
+      if (retryAfter) {
+        const seconds = Number(retryAfter);
+        const requestedDelay = Number.isFinite(seconds)
+          ? seconds * 1000
+          : Date.parse(retryAfter) - Date.now();
+
+        if (Number.isFinite(requestedDelay)) {
+          retryDelay = Math.max(retryDelay, requestedDelay);
+        }
+      }
+
+      if (attempt === 3) {
+        throw new Error(
+          `Scryfall lookup failed after four attempts (HTTP ${response.status}).`,
+        );
+      }
+    } catch (error) {
+      signal.throwIfAborted();
+      if (attempt === 3) throw error;
+    }
+
+    await waitForRequest(retryDelay, signal);
+  }
+
+  throw new Error("Card lookup failed. Please retry.");
+}
+
 export async function matchImportRow(
   row: ImportRow,
   signal: AbortSignal,
@@ -66,10 +142,7 @@ export async function matchImportRow(
     endpoint.searchParams.set("exact", row.name);
   }
 
-  const response = await fetch(endpoint, {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-    headers: { Accept: "application/json" },
-  });
+  const response = await fetchImportCard(endpoint, signal);
 
   if (response.status === 404) {
     result.issue =
