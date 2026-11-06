@@ -55,6 +55,13 @@ function commanderImage(id: string | null) {
         commander, deck, or set. These are original precon lists.
       </p>
 
+      <p class="intro">
+        Add a private, editable copy to Concept decks for planning, or My decks
+        for your regular collection. Cards are marked as real rather than
+        proxies. Finishes default to nonfoil where available; review them
+        against your physical cards.
+      </p>
+
       <div class="precon-filters">
         <label>
           Search
@@ -138,6 +145,24 @@ function commanderImage(id: string | null) {
                 >
                   Goldfish this precon →
                 </a>
+
+                <label>
+                  Add to
+                  <select class="precon-destination">
+                    <option value="concept">Concept decks</option>
+                    <option value="regular">My decks</option>
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  class="add-precon"
+                  data-precon-id={deck.id}
+                  data-precon-name={deck.name}
+                >
+                  Add deck.
+                </button>
+                <p class="precon-save-status" role="status" />
               </div>
             </li>
           ))
@@ -167,6 +192,9 @@ function commanderImage(id: string | null) {
 </Layout>
 
 <script>
+  import { supabase } from "@/lib/supabase";
+  import { preparePrecon } from "@/lib/preconDeck";
+
   const query = document.getElementById("precon-query") as HTMLInputElement;
   const year = document.getElementById("precon-year") as HTMLSelectElement;
   const count = document.getElementById("precon-count")!;
@@ -191,6 +219,117 @@ function commanderImage(id: string | null) {
     count.textContent = `${visible} of ${cards.length} precons · newest releases first`;
     empty.hidden = visible !== 0;
   }
+
+  let addingPrecon = false;
+
+  const attempts = new Map<string, { requestId: string; userId: string }>();
+
+  document
+    .querySelectorAll<HTMLButtonElement>(".add-precon")
+    .forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (addingPrecon) return;
+
+        const id = button.dataset.preconId;
+        const message = button.parentElement?.querySelector<HTMLElement>(
+          ".precon-save-status",
+        );
+        if (!id || !message) return;
+
+        const destination =
+          button.parentElement?.querySelector<HTMLSelectElement>(
+            ".precon-destination",
+          );
+        if (!destination) return;
+
+        const isConcept = destination.value === "concept";
+        const attemptKey = `${id}:${isConcept}`;
+
+        addingPrecon = true;
+        const buttons =
+          document.querySelectorAll<HTMLButtonElement>(".add-precon");
+        buttons.forEach((item) => {
+          item.disabled = true;
+        });
+
+        const controller = new AbortController();
+
+        try {
+          const {
+            data: { session },
+            error,
+          } = await supabase.auth.getSession();
+
+          if (error || !session) {
+            throw new Error("Sign in using the account menu, then try again.");
+          }
+
+          const userId = session.user.id;
+          let attempt = attempts.get(attemptKey);
+
+          if (!attempt || attempt.userId !== userId) {
+            attempt = { requestId: crypto.randomUUID(), userId };
+            attempts.set(attemptKey, attempt);
+          }
+
+          const prepared = await preparePrecon(
+            id,
+            controller.signal,
+            (text) => {
+              message.textContent = text;
+            },
+          );
+
+          const {
+            data: { session: latest },
+            error: sessionError,
+          } = await supabase.auth.getSession();
+
+          if (sessionError || latest?.user.id !== userId) {
+            throw new Error("Your sign-in changed. Please try again.");
+          }
+
+          message.textContent = "Saving your private deck…";
+
+          const { data: deckId, error: saveError } = await supabase.rpc(
+            "save_precon_deck_to_category",
+            {
+              p_request_id: attempt.requestId,
+              p_name: prepared.name,
+              p_cards: prepared.cards,
+              p_is_concept: isConcept,
+            },
+          );
+
+          if (saveError) throw saveError;
+          if (typeof deckId !== "string") {
+            throw new Error("Couldn’t confirm the saved deck. Please retry.");
+          }
+
+          const {
+            data: { session: finalSession },
+          } = await supabase.auth.getSession();
+
+          if (finalSession?.user.id !== userId) {
+            throw new Error(
+              "Sign-in changed. Check Your decks after signing back in.",
+            );
+          }
+
+          window.location.assign(`/mtg/deck?id=${encodeURIComponent(deckId)}`);
+        } catch (error) {
+          message.textContent =
+            error instanceof Error
+              ? error.message
+              : "Couldn’t save this precon. Please retry.";
+        } finally {
+          addingPrecon = false;
+          buttons.forEach((item) => {
+            item.disabled = false;
+          });
+        }
+      });
+    });
 
   query.addEventListener("input", filterPrecons);
   year.addEventListener("change", filterPrecons);
@@ -336,5 +475,17 @@ function commanderImage(id: string | null) {
 
   .credits {
     font-size: 0.85rem;
+  }
+
+  .precon-info > label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .precon-destination {
+    flex: 1;
+    min-width: 0;
   }
 </style>

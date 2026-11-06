@@ -52,7 +52,7 @@ async function waitForRequest(delay: number, signal: AbortSignal) {
   signal.throwIfAborted();
 }
 
-async function fetchImportCard(url: URL, signal: AbortSignal) {
+export async function fetchImportCard(url: URL, signal: AbortSignal) {
   for (let attempt = 0; attempt < 4; attempt++) {
     signal.throwIfAborted();
 
