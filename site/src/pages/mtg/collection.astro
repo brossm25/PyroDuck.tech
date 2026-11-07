@@ -55,15 +55,74 @@ import Layout from "@/layouts/Layout.astro";
 
           <ul id="storage-locations"></ul>
         </section>
+        <section
+          id="location-cards-panel"
+          class="storage-panel"
+          aria-labelledby="location-cards-heading"
+          hidden
+        >
+          <h2 id="location-cards-heading">Stored cards</h2>
+          <p id="location-cards-status" role="status"></p>
+          <form id="collection-search">
+            <label for="collection-query">Find a card to add</label>
+            <div class="storage-row">
+              <input
+                id="collection-query"
+                type="search"
+                placeholder="Try Sol Ring"
+                required
+              />
+              <button type="submit">Search</button>
+            </div>
+          </form>
+
+          <p id="collection-search-status" role="status"></p>
+          <ul id="collection-search-results"></ul>
+          <ul id="location-cards"></ul>
+        </section>
       </div>
     </div>
   </section>
+  <dialog id="collection-picker" aria-labelledby="collection-picker-heading">
+    <form method="dialog">
+      <button type="submit">Close ×</button>
+    </form>
+
+    <h2 id="collection-picker-heading">Choose printing</h2>
+    <p id="collection-picker-status" role="status"></p>
+
+    <label for="collection-printing">Printing</label>
+    <select id="collection-printing"></select>
+
+    <img id="collection-card-image" alt="" width="488" height="680" hidden />
+
+    <label for="collection-finish">Finish</label>
+    <select id="collection-finish"></select>
+
+    <label for="collection-quantity">Quantity</label>
+    <input
+      id="collection-quantity"
+      type="number"
+      min="1"
+      max="1000000"
+      step="1"
+      value="1"
+      required
+    />
+
+    <button id="collection-save" type="button" disabled>
+      Add to location
+    </button>
+  </dialog>
 </Layout>
 
 <script>
   import { supabase } from "@/lib/supabase";
   import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
+  import { fetchImportCard } from "@/lib/cardImportMatch";
+  import type { DeckCard } from "@/lib/deckCardData";
+  import { loadDeckPrintings } from "@/lib/deckPrintings";
 
   interface StorageLocation {
     id: string;
@@ -83,6 +142,461 @@ import Layout from "@/layouts/Layout.astro";
     'button[type="submit"]',
   )!;
   const dumpButton = get<HTMLButtonElement>("create-dump-box");
+  interface StoredCard {
+    id: string;
+    name: string;
+    set_name: string;
+    collector_number: string;
+    finish: string;
+    quantity: number;
+  }
+
+  const cardsPanel = get("location-cards-panel");
+  const cardsHeading = get("location-cards-heading");
+  const cardsStatus = get("location-cards-status");
+  const cardsList = get<HTMLUListElement>("location-cards");
+
+  let locationRequest = 0;
+  let selectedLocation: StorageLocation | null = null;
+
+  const searchForm = get<HTMLFormElement>("collection-search");
+  const searchQuery = get<HTMLInputElement>("collection-query");
+  const searchStatus = get("collection-search-status");
+  const searchResults = get<HTMLUListElement>("collection-search-results");
+  let searchController: AbortController | undefined;
+
+  const cardPicker = get<HTMLDialogElement>("collection-picker");
+  const printingSelect = get<HTMLSelectElement>("collection-printing");
+  const finishSelect = get<HTMLSelectElement>("collection-finish");
+  const cardImage = get<HTMLImageElement>("collection-card-image");
+  const pickerStatus = get("collection-picker-status");
+  const cardQuantity = get<HTMLInputElement>("collection-quantity");
+  const saveCard = get<HTMLButtonElement>("collection-save");
+
+  function syncCardSave() {
+    const card = cardPrintings[Number(printingSelect.value)];
+    saveCard.disabled =
+      !userId ||
+      loading ||
+      saving ||
+      !selectedLocation ||
+      !card ||
+      !["nonfoil", "foil", "etched"].includes(finishSelect.value) ||
+      !card.finishes.includes(finishSelect.value);
+
+    printingSelect.disabled = saving;
+    finishSelect.disabled = saving;
+    cardQuantity.disabled = saving;
+  }
+
+  let cardPrintings: DeckCard[] = [];
+  let printingController: AbortController | undefined;
+
+  function previewCollectionPrinting() {
+    saveCard.disabled = true;
+    const card = cardPrintings[Number(printingSelect.value)];
+    finishSelect.replaceChildren();
+    cardImage.hidden = true;
+    cardImage.removeAttribute("src");
+
+    if (!card) {
+      syncCardSave();
+      return;
+    }
+
+    for (const finish of card.finishes) {
+      if (!["nonfoil", "foil", "etched"].includes(finish)) continue;
+
+      finishSelect.add(
+        new Option(
+          finish === "nonfoil"
+            ? "Nonfoil"
+            : finish === "etched"
+              ? "Etched foil"
+              : "Foil",
+          finish,
+        ),
+      );
+    }
+
+    if (card.finishes.includes("nonfoil")) {
+      finishSelect.value = "nonfoil";
+    }
+
+    const url =
+      card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal;
+
+    if (url) {
+      try {
+        const imageUrl = new URL(url);
+        if (
+          imageUrl.protocol === "https:" &&
+          imageUrl.hostname === "cards.scryfall.io"
+        ) {
+          cardImage.src = imageUrl.href;
+          cardImage.alt = card.name;
+          cardImage.hidden = false;
+        }
+      } catch {
+        // The printing can still be selected without an image.
+      }
+    }
+  }
+
+  async function chooseCollectionPrinting(card: DeckCard) {
+    if (!userId || loading || saving) return;
+
+    printingController?.abort();
+    const controller = new AbortController();
+    printingController = controller;
+    const current = version;
+    const location = locationRequest;
+
+    cardPrintings = [];
+    saveCard.disabled = true;
+    printingSelect.replaceChildren();
+    finishSelect.replaceChildren();
+    cardImage.hidden = true;
+    cardQuantity.value = "1";
+
+    get("collection-picker-heading").textContent =
+      `Choose printing · ${card.name}`;
+    pickerStatus.textContent = "Loading printings…";
+    cardPicker.showModal();
+
+    try {
+      const printings = await loadDeckPrintings<DeckCard>(
+        card.prints_search_uri,
+        controller.signal,
+      );
+
+      if (
+        controller.signal.aborted ||
+        current !== version ||
+        location !== locationRequest
+      )
+        return;
+
+      cardPrintings = printings;
+
+      printings.forEach((printing, index) => {
+        printingSelect.add(
+          new Option(
+            `${printing.set_name} — #${printing.collector_number}`,
+            String(index),
+          ),
+        );
+      });
+
+      previewCollectionPrinting();
+      syncCardSave();
+      pickerStatus.textContent = printings.length
+        ? "Choose the printing and finish that match your card."
+        : "No paper printings found.";
+    } catch {
+      if (
+        !controller.signal.aborted &&
+        current === version &&
+        location === locationRequest
+      ) {
+        pickerStatus.textContent =
+          "Couldn’t load printings. Close this window and try again.";
+      }
+    }
+  }
+
+  saveCard.addEventListener("click", async () => {
+    if (!userId || loading || saving || !selectedLocation) return;
+
+    const card = cardPrintings[Number(printingSelect.value)];
+    const finish = finishSelect.value;
+    const quantity = Number(cardQuantity.value);
+
+    if (
+      !card ||
+      !["nonfoil", "foil", "etched"].includes(finish) ||
+      !card.finishes.includes(finish)
+    ) {
+      pickerStatus.textContent = "Choose a valid printing and finish.";
+      return;
+    }
+
+    if (
+      !cardQuantity.reportValidity() ||
+      !Number.isSafeInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 1000000
+    ) {
+      pickerStatus.textContent =
+        "Enter a whole-number quantity between 1 and 1,000,000.";
+      return;
+    }
+
+    const current = version;
+    const targetUser = userId;
+    const location = selectedLocation;
+    const request = locationRequest;
+    const isCurrent = () =>
+      current === version &&
+      targetUser === userId &&
+      request === locationRequest;
+
+    let saved = false;
+    saving = true;
+    controls();
+    pickerStatus.textContent = `Adding to ${location.name}…`;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (!isCurrent()) return;
+      if (sessionError || session?.user.id !== targetUser) {
+        throw new Error("Your sign-in changed. Reload before adding cards.");
+      }
+
+      const cardToAdd = {
+        scryfall_id: card.id,
+        oracle_id: card.oracle_id ?? null,
+        name: card.name,
+        set_code: (card as DeckCard & { set: string }).set,
+        set_name: card.set_name,
+        collector_number: card.collector_number,
+        finish,
+        quantity,
+      };
+
+      // Keep the request ID if the result is uncertain.
+      // Retrying the same addition in this tab reuses that ID,
+      // including after a page reload.
+      const retryKey =
+        "binderlink:collection-add:" +
+        JSON.stringify({
+          userId: targetUser,
+          locationId: location.id,
+          card: cardToAdd,
+        });
+
+      let requestId = sessionStorage.getItem(retryKey);
+
+      if (!requestId) {
+        requestId = crypto.randomUUID();
+        sessionStorage.setItem(retryKey, requestId);
+      }
+
+      const { data, error } = await supabase.rpc("add_collection_card_copies", {
+        p_request_id: requestId,
+        p_location_id: location.id,
+        p_card: cardToAdd,
+      });
+
+      if (!isCurrent()) return;
+
+      if (error) {
+        throw new Error(
+          `${error.message} Retry with the same printing, finish, and quantity to avoid counting this addition twice.`,
+        );
+      }
+
+      if (typeof data !== "string") {
+        throw new Error(
+          "Couldn’t confirm the save. Retry with the same printing, finish, and quantity.",
+        );
+      }
+
+      // A confirmed save completes this addition.
+      // Adding more copies afterward gets a new request ID.
+      sessionStorage.removeItem(retryKey);
+      saved = true;
+      cardPicker.close();
+    } catch (error) {
+      if (isCurrent()) {
+        pickerStatus.textContent =
+          error instanceof Error
+            ? error.message
+            : "Couldn’t confirm the save. Check this location before trying again.";
+      }
+    } finally {
+      if (current === version) {
+        saving = false;
+        controls();
+      }
+    }
+
+    if (saved && isCurrent()) {
+      await openLocation(location);
+      if (current === version && selectedLocation?.id === location.id) {
+        status.textContent = `Added ${quantity} × ${card.name} to ${location.name}.`;
+      }
+    }
+  });
+
+  printingSelect.addEventListener("change", () => {
+    previewCollectionPrinting();
+    syncCardSave();
+  });
+  finishSelect.addEventListener("change", syncCardSave);
+  cardPicker.addEventListener("close", () => printingController?.abort());
+
+  function resetCardSearch() {
+    searchController?.abort();
+    searchForm.reset();
+    searchStatus.textContent = "";
+    searchResults.replaceChildren();
+    printingController?.abort();
+    cardPicker.close();
+    cardPrintings = [];
+    saveCard.disabled = true;
+  }
+
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const query = searchQuery.value.trim();
+    if (!query || !userId || loading || saving) return;
+
+    searchController?.abort();
+    const controller = new AbortController();
+    searchController = controller;
+
+    const current = version;
+    const location = locationRequest;
+    const isCurrent = () =>
+      !controller.signal.aborted &&
+      current === version &&
+      location === locationRequest;
+
+    searchResults.replaceChildren();
+    searchStatus.textContent = "Searching…";
+
+    try {
+      const endpoint = new URL("https://api.scryfall.com/cards/search");
+      endpoint.searchParams.set("q", `(${query}) game:paper`);
+      endpoint.searchParams.set("unique", "cards");
+      endpoint.searchParams.set("order", "name");
+
+      const response = await fetchImportCard(endpoint, controller.signal);
+      if (!isCurrent()) return;
+
+      if (response.status === 404) {
+        searchStatus.textContent = "No cards found. Try another name.";
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Search unavailable. Please try again.");
+      }
+
+      const page = (await response.json()) as {
+        data: DeckCard[];
+        has_more?: boolean;
+      };
+      if (!isCurrent()) return;
+      if (!Array.isArray(page.data)) {
+        throw new Error("Search returned incomplete results. Please retry.");
+      }
+
+      for (const card of page.data.slice(0, 20)) {
+        const item = document.createElement("li");
+        const name = document.createElement("strong");
+        const details = document.createElement("p");
+
+        name.textContent = card.name;
+        details.textContent =
+          card.type_line ?? card.card_faces?.[0]?.type_line ?? "";
+
+        const choose = document.createElement("button");
+        choose.type = "button";
+        choose.textContent = "Choose printing";
+        choose.setAttribute("aria-haspopup", "dialog");
+        choose.addEventListener(
+          "click",
+          () => void chooseCollectionPrinting(card),
+        );
+
+        item.append(name, details, choose);
+        searchResults.append(item);
+      }
+
+      searchStatus.textContent =
+        `Showing ${Math.min(20, page.data.length)} matches.` +
+        (page.has_more || page.data.length > 20
+          ? " Narrow your search for other matches."
+          : "");
+    } catch (error) {
+      if (isCurrent()) {
+        searchStatus.textContent =
+          error instanceof Error
+            ? error.message
+            : "Search failed. Please retry.";
+      }
+    }
+  });
+
+  async function openLocation(location: StorageLocation) {
+    if (!userId || loading || saving) return;
+
+    const request = ++locationRequest;
+    selectedLocation = location;
+    resetCardSearch();
+    const current = version;
+    const targetUser = userId;
+    const isCurrent = () =>
+      request === locationRequest &&
+      current === version &&
+      userId === targetUser;
+
+    cardsPanel.hidden = false;
+    cardsHeading.textContent = location.name;
+    cardsList.replaceChildren();
+    cardsStatus.textContent = "Loading stored cards…";
+
+    try {
+      const cards = await loadAllPages<StoredCard>(
+        async (from, to) => {
+          const result = await supabase
+            .from("collection_cards")
+            .select("id, name, set_name, collector_number, finish, quantity")
+            .eq("user_id", targetUser)
+            .eq("location_id", location.id)
+            .order("name")
+            .order("id")
+            .range(from, to);
+
+          return {
+            data: result.data as StoredCard[] | null,
+            error: result.error,
+          };
+        },
+        { isCurrent },
+      );
+
+      if (!isCurrent() || cards === null) return;
+
+      for (const card of cards) {
+        const item = document.createElement("li");
+        const name = document.createElement("strong");
+        const details = document.createElement("p");
+
+        name.textContent = `${card.quantity} × ${card.name}`;
+        details.textContent = `${card.set_name} #${card.collector_number} · ${card.finish}`;
+
+        item.append(name, details);
+        cardsList.append(item);
+      }
+
+      const copies = cards.reduce((sum, card) => sum + card.quantity, 0);
+      cardsStatus.textContent = cards.length
+        ? `${copies} card copies across ${cards.length} printing and finish entries.`
+        : "No cards stored here yet.";
+    } catch {
+      if (isCurrent()) {
+        cardsStatus.textContent =
+          "Couldn’t load these cards. Click the location to try again.";
+      }
+    }
+  }
 
   let locations: StorageLocation[] = [];
   let userId: string | null = null;
@@ -99,6 +613,8 @@ import Layout from "@/layouts/Layout.astro";
     dumpButton.textContent = locations.some((location) => location.is_dump_box)
       ? "Dump box created"
       : "Create Dump box";
+
+    syncCardSave();
   }
 
   function renderLocations() {
@@ -110,9 +626,11 @@ import Layout from "@/layouts/Layout.astro";
         a.name.localeCompare(b.name),
     )) {
       const item = document.createElement("li");
-      const name = document.createElement("strong");
-      name.textContent = location.name;
-      item.append(name);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = location.name;
+      button.addEventListener("click", () => void openLocation(location));
+      item.append(button);
 
       if (location.is_dump_box) {
         const note = document.createElement("span");
@@ -264,6 +782,13 @@ import Layout from "@/layouts/Layout.astro";
     if (!accountChanged(event, session)) return;
 
     version++;
+    locationRequest++;
+    selectedLocation = null;
+    resetCardSearch();
+    cardsList.replaceChildren();
+    cardsPanel.hidden = true;
+    cardsHeading.textContent = "Stored cards";
+    cardsStatus.textContent = "";
     userId = session?.user.id ?? null;
     loading = true;
     saving = false;
@@ -366,5 +891,153 @@ import Layout from "@/layouts/Layout.astro";
     border-radius: 0.75rem;
     background: #000;
     overflow-wrap: anywhere;
+  }
+
+  #collection-search-status {
+    margin-top: 0.75rem;
+  }
+
+  #collection-search-results {
+    margin-top: 0.25rem;
+  }
+
+  #collection-picker {
+    width: min(92vw, 540px);
+    max-height: 90dvh;
+    overflow-y: auto;
+    margin: auto;
+    padding: 1.25rem;
+    border: 1px solid #a444fc;
+    border-radius: 1rem;
+    background: #10071b;
+    color: #f7f3ff;
+  }
+
+  #collection-picker::backdrop {
+    background: #000b;
+  }
+
+  #collection-picker h2 {
+    margin: 1rem 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  #collection-picker label {
+    display: block;
+    margin: 1rem 0 0.5rem;
+  }
+
+  #collection-picker select,
+  #collection-picker input,
+  #collection-picker button {
+    min-height: 44px;
+    padding: 0.625rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+  }
+
+  #collection-picker select,
+  #collection-picker input {
+    width: 100%;
+  }
+
+  #collection-card-image {
+    width: min(100%, 280px);
+    height: auto;
+    margin: 1rem auto;
+    border-radius: 0.75rem;
+  }
+
+  #collection-card-image:not([hidden]) {
+    display: block;
+  }
+
+  #collection-search-results {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  #collection-search-results :global(li) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 1rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid #a444fc55;
+    border-radius: 0.75rem;
+    background: #000;
+  }
+
+  #collection-search-results :global(strong) {
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+  }
+
+  #collection-search-results :global(p) {
+    grid-column: 1;
+    margin: 0;
+    color: #c4b8d2;
+    font-size: 0.9rem;
+  }
+
+  #collection-search-results :global(button) {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #collection-search-results :global(button:hover) {
+    background: #b5fb14;
+    border-color: #b5fb14;
+  }
+
+  #collection-search-results :global(button:focus-visible) {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 540px) {
+    #collection-search-results :global(li) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #collection-search-results :global(button) {
+      grid-column: 1;
+      grid-row: auto;
+      margin-top: 0.5rem;
+      width: 100%;
+    }
+  }
+
+  #collection-picker #collection-save {
+    width: 100%;
+    margin-top: 1.25rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #collection-picker #collection-save:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #collection-picker #collection-save:focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
   }
 </style>
