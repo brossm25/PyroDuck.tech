@@ -1873,13 +1873,39 @@ import DeckImport from "@/components/mtg/DeckImport.astro";
     }
   });
 
+  get<HTMLFormElement>("picker-add").addEventListener(
+    "invalid",
+    (event) => {
+      const field = event.target;
+      const status = get("picker-status");
+
+      status.textContent =
+        field instanceof HTMLInputElement || field instanceof HTMLSelectElement
+          ? `Cannot save: ${field.id}. ${field.validationMessage}`
+          : "A required field is invalid.";
+
+      status.scrollIntoView({ block: "nearest" });
+    },
+    true,
+  );
+
   get<HTMLFormElement>("picker-add").addEventListener("submit", (event) => {
     event.preventDefault();
     const card = deckPicker.selectedCard();
     const target = editingPrintingEntry;
 
     if (target) {
-      if (!card || !card.finishes.includes(finish.value)) return;
+      const status = get("picker-status");
+
+      if (!card || !card.finishes.includes(finish.value)) {
+        status.textContent =
+          "Cannot save: the selected printing or finish is unavailable. Select them again.";
+        status.scrollIntoView({ block: "nearest" });
+        return;
+      }
+
+      status.textContent = "Saving printing…";
+      status.scrollIntoView({ block: "nearest" });
 
       const selectedFinish = finish.value;
       const expectedVersion = version;
