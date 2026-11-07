@@ -10,6 +10,7 @@ export interface ImportRow {
   finish: ImportFinish | null;
   role: ImportRole;
   isProxy: boolean | null;
+  scryfallId?: string | null;
 }
 
 interface ImportResult {
@@ -67,9 +68,17 @@ export function parseCardList(
       };
     }
 
-    const headers = (records.shift() ?? []).map((value) =>
-      value.trim().toLowerCase(),
-    );
+    const aliases: Record<string, string> = {
+      "card name": "name",
+      quantity: "count",
+      "set code": "edition",
+      finish: "foil",
+    };
+
+    const headers = (records.shift() ?? []).map((value) => {
+      const normalized = value.trim().toLowerCase();
+      return aliases[normalized] ?? normalized;
+    });
 
     for (const required of ["name", "count"]) {
       if (!headers.includes(required)) {
@@ -87,6 +96,7 @@ export function parseCardList(
       "": "nonfoil",
       false: "nonfoil",
       nonfoil: "nonfoil",
+      normal: "nonfoil",
       true: "foil",
       foil: "foil",
       etched: "etched",
@@ -106,6 +116,18 @@ export function parseCardList(
 
       const finish = finishValues[field("foil").toLowerCase()];
       const proxy = field("proxy").toLowerCase();
+
+      const scryfallId = field("scryfall id") || null;
+
+      if (
+        scryfallId &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          scryfallId,
+        )
+      ) {
+        issues.push(`Row ${line}: invalid Scryfall ID.`);
+        return;
+      }
 
       const roleValue = field("role").toLowerCase();
       let role: ImportRole = "main";
@@ -138,6 +160,7 @@ export function parseCardList(
           finish,
           role,
           isProxy: proxy ? proxy === "true" : null,
+          scryfallId,
         },
         line,
       );

@@ -63,6 +63,9 @@ import Layout from "@/layouts/Layout.astro";
         >
           <h2 id="location-cards-heading">Stored cards</h2>
           <p id="location-cards-status" role="status"></p>
+          <button id="open-collection-import" type="button" disabled>
+            Import cards
+          </button>
           <form id="collection-search">
             <label for="collection-query">Find a card to add</label>
             <div class="storage-row">
@@ -114,13 +117,78 @@ import Layout from "@/layouts/Layout.astro";
       Add to location
     </button>
   </dialog>
+  <dialog
+    id="collection-import-dialog"
+    aria-labelledby="collection-import-heading"
+  >
+    <form method="dialog">
+      <button id="collection-import-close" type="submit">Close ×</button>
+    </form>
+
+    <h2 id="collection-import-heading">Import cards</h2>
+    <p id="collection-import-destination"></p>
+
+    <p class="import-help">
+      Import a CSV exported from Mythic Tools or ManaBox, or paste a card list.
+      Review the cards before adding them. Matching printing and finish entries
+      will have their quantities increased.
+    </p>
+
+    <label for="collection-import-format">Format</label>
+    <select id="collection-import-format">
+      <option value="csv">CSV export</option>
+      <option value="text">Text card list</option>
+    </select>
+
+    <label for="collection-import-file">Choose a file</label>
+    <input
+      id="collection-import-file"
+      type="file"
+      accept=".csv,.txt,text/csv,text/plain"
+    />
+
+    <label for="collection-import-text">Or paste your list</label>
+    <textarea
+      id="collection-import-text"
+      rows="7"
+      maxlength="1000000"
+      placeholder="Paste CSV contents or a card list here"></textarea>
+
+    <p class="import-help">
+      Cards go into the selected storage location. Condition, language, purchase
+      prices, and the export’s folder names are not stored. Proxy rows must be
+      reviewed before importing.
+    </p>
+
+    <div class="import-actions">
+      <button id="collection-import-preview" type="button">
+        Preview import
+      </button>
+      <button id="collection-import-cancel" type="button" hidden>
+        Cancel lookup
+      </button>
+    </div>
+
+    <p id="collection-import-status" role="status"></p>
+    <p id="collection-import-summary"></p>
+    <ul id="collection-import-results"></ul>
+
+    <button id="collection-import-save" type="button" disabled>
+      Add reviewed cards
+    </button>
+  </dialog>
 </Layout>
 
 <script>
   import { supabase } from "@/lib/supabase";
   import { loadAllPages } from "@/lib/paginate";
   import { createAccountChangeGuard } from "@/lib/authAccountGuard";
-  import { fetchImportCard } from "@/lib/cardImportMatch";
+  import {
+    fetchImportCard,
+    matchImportRow,
+    type ImportMatch,
+  } from "@/lib/cardImportMatch";
+  import { parseCardList, type ImportFinish } from "@/lib/cardImport";
   import type { DeckCard } from "@/lib/deckCardData";
   import { loadDeckPrintings } from "@/lib/deckPrintings";
 
@@ -441,6 +509,8 @@ import Layout from "@/layouts/Layout.astro";
   cardPicker.addEventListener("close", () => printingController?.abort());
 
   function resetCardSearch() {
+    resetCollectionImport();
+    importButton.disabled = !userId || loading || saving || !selectedLocation;
     searchController?.abort();
     searchForm.reset();
     searchStatus.textContent = "";
@@ -755,10 +825,278 @@ import Layout from "@/layouts/Layout.astro";
 
       if (!isCurrent() || cards === null) return;
 
+      const selectedCards = new Set<string>();
+      const selectionCheckboxes = new Map<string, HTMLInputElement>();
+
+      const toolbar = document.createElement("li");
+      toolbar.className = "collection-batch-toolbar";
+
+      const selectionStatus = document.createElement("p");
+      selectionStatus.setAttribute("role", "status");
+
+      const selectionActions = document.createElement("div");
+      selectionActions.className = "collection-batch-actions";
+
+      const selectAll = document.createElement("button");
+      selectAll.type = "button";
+      selectAll.textContent = "Select all";
+
+      const clearSelection = document.createElement("button");
+      clearSelection.type = "button";
+      clearSelection.textContent = "Clear selection";
+
+      const destinationLabel = document.createElement("label");
+      destinationLabel.textContent = "Move selected cards to";
+
+      const batchDestination = document.createElement("select");
+      batchDestination.add(new Option("Choose a location", ""));
+
+      for (const destination of [...locations].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      )) {
+        if (destination.id === location.id) continue;
+        batchDestination.add(new Option(destination.name, destination.id));
+      }
+
+      destinationLabel.append(batchDestination);
+
+      const batchMove = document.createElement("button");
+      batchMove.type = "button";
+      batchMove.textContent = "Move selected";
+      batchMove.disabled = true;
+
+      function updateSelection() {
+        const selected = cards!.filter((card) => selectedCards.has(card.id));
+        const copies = selected.reduce((sum, card) => sum + card.quantity, 0);
+
+        selectionStatus.textContent = `${selected.length} entries selected · ${copies} copies`;
+
+        selectAll.disabled = saving || selected.length === cards!.length;
+        clearSelection.disabled = saving || selected.length === 0;
+
+        batchDestination.disabled = saving;
+        batchMove.disabled =
+          saving ||
+          !isCurrent() ||
+          selected.length === 0 ||
+          selected.length > 1000 ||
+          !batchDestination.value;
+      }
+
+      batchDestination.addEventListener("change", updateSelection);
+
+      batchMove.addEventListener("click", async () => {
+        if (!isCurrent() || saving || loading || !userId) return;
+
+        const destination = locations.find(
+          (item) => item.id === batchDestination.value,
+        );
+        const selected = cards.filter((card) => selectedCards.has(card.id));
+
+        if (
+          !destination ||
+          destination.id === location.id ||
+          selected.length === 0 ||
+          selected.length > 1000
+        ) {
+          selectionStatus.textContent =
+            "Select between 1 and 1,000 entries and choose another location.";
+          return;
+        }
+
+        const targetUser = userId;
+        const copies = selected.reduce((sum, card) => sum + card.quantity, 0);
+
+        const entries = selected
+          .map((card) => ({
+            entry_id: card.id,
+            expected_quantity: card.quantity,
+          }))
+          .sort((a, b) => a.entry_id.localeCompare(b.entry_id));
+
+        let moved = false;
+        saving = true;
+        controls();
+        updateSelection();
+
+        for (const checkbox of selectionCheckboxes.values()) {
+          checkbox.disabled = true;
+        }
+
+        selectionStatus.textContent = `Moving ${copies} copies to “${destination.name}”…`;
+
+        try {
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession();
+
+          if (!isCurrent()) return;
+
+          if (sessionError || session?.user.id !== targetUser) {
+            throw new Error(
+              "Your sign-in changed. Reload before moving cards.",
+            );
+          }
+
+          const payload = JSON.stringify({
+            user: targetUser,
+            source: location.id,
+            destination: destination.id,
+            cards: entries,
+          });
+
+          const digest = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(payload),
+          );
+
+          if (!isCurrent()) return;
+
+          const fingerprint = Array.from(new Uint8Array(digest))
+            .map((value) => value.toString(16).padStart(2, "0"))
+            .join("");
+
+          const retryKey = `collection-batch-move:${fingerprint}`;
+          let requestId = sessionStorage.getItem(retryKey);
+
+          if (!requestId) {
+            requestId = crypto.randomUUID();
+            sessionStorage.setItem(retryKey, requestId);
+          }
+
+          const { data, error } = await supabase.rpc(
+            "move_collection_cards_batch",
+            {
+              p_request_id: requestId,
+              p_source_location_id: location.id,
+              p_destination_location_id: destination.id,
+              p_cards: entries,
+            },
+          );
+
+          if (!isCurrent()) return;
+
+          if (error) {
+            throw new Error(
+              `${error.message} If the result is uncertain, keep the same selection and destination when retrying.`,
+            );
+          }
+
+          if (data !== requestId) {
+            throw new Error(
+              "Couldn’t confirm the move. Keep the same selection and destination, then retry safely.",
+            );
+          }
+
+          moved = true;
+
+          try {
+            sessionStorage.removeItem(retryKey);
+          } catch {
+            // The move succeeded even if browser storage cleanup failed.
+          }
+        } catch (error) {
+          if (isCurrent()) {
+            selectionStatus.textContent =
+              error instanceof Error
+                ? error.message
+                : "Couldn’t confirm the move. Keep the same selection and destination when retrying.";
+          }
+        } finally {
+          if (current === version) {
+            saving = false;
+            controls();
+          }
+
+          if (isCurrent()) {
+            for (const checkbox of selectionCheckboxes.values()) {
+              checkbox.disabled = false;
+            }
+
+            const resultMessage = selectionStatus.textContent;
+            updateSelection();
+
+            if (!moved) selectionStatus.textContent = resultMessage;
+          }
+        }
+
+        if (moved && isCurrent()) {
+          await openLocation(location);
+
+          if (
+            current === version &&
+            userId === targetUser &&
+            selectedLocation?.id === location.id
+          ) {
+            status.textContent = `Moved ${copies} copies across ${selected.length} entries to “${destination.name}”.`;
+          }
+        }
+      });
+
+      selectAll.addEventListener("click", () => {
+        if (!isCurrent() || saving) return;
+
+        for (const card of cards) {
+          selectedCards.add(card.id);
+          const checkbox = selectionCheckboxes.get(card.id);
+          if (checkbox) checkbox.checked = true;
+        }
+
+        updateSelection();
+      });
+
+      clearSelection.addEventListener("click", () => {
+        if (!isCurrent() || saving) return;
+
+        selectedCards.clear();
+        for (const checkbox of selectionCheckboxes.values()) {
+          checkbox.checked = false;
+        }
+
+        updateSelection();
+      });
+
+      selectionActions.append(selectAll, clearSelection);
+      toolbar.append(
+        selectionStatus,
+        selectionActions,
+        destinationLabel,
+        batchMove,
+      );
+
+      if (cards.length) cardsList.append(toolbar);
+      updateSelection();
+
       for (const card of cards) {
         const item = document.createElement("li");
         const name = document.createElement("strong");
         const details = document.createElement("p");
+
+        const selectionLabel = document.createElement("label");
+        selectionLabel.className = "stored-card-selection";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.setAttribute(
+          "aria-label",
+          `Select ${card.name}, ${card.set_name} #${card.collector_number}, ${card.finish}`,
+        );
+
+        checkbox.addEventListener("change", () => {
+          if (!isCurrent() || saving) {
+            checkbox.checked = selectedCards.has(card.id);
+            return;
+          }
+
+          if (checkbox.checked) selectedCards.add(card.id);
+          else selectedCards.delete(card.id);
+
+          updateSelection();
+        });
+
+        selectionCheckboxes.set(card.id, checkbox);
+        selectionLabel.append(checkbox, name);
 
         name.textContent = `${card.quantity} × ${card.name}`;
         details.textContent = `${card.set_name} #${card.collector_number} · ${card.finish}`;
@@ -923,7 +1261,15 @@ import Layout from "@/layouts/Layout.astro";
           void removeStoredCard(card, location);
         });
 
-        item.append(name, details, edit, move, remove, quantityForm, moveForm);
+        item.append(
+          selectionLabel,
+          details,
+          edit,
+          move,
+          remove,
+          quantityForm,
+          moveForm,
+        );
         cardsList.append(item);
       }
 
@@ -945,8 +1291,525 @@ import Layout from "@/layouts/Layout.astro";
   let loading = true;
   let saving = false;
 
+  const importButton = get<HTMLButtonElement>("open-collection-import");
+  const importDialog = get<HTMLDialogElement>("collection-import-dialog");
+  const importDestination = get("collection-import-destination");
+  const importFormat = get<HTMLSelectElement>("collection-import-format");
+  const importFile = get<HTMLInputElement>("collection-import-file");
+  const importText = get<HTMLTextAreaElement>("collection-import-text");
+  const importPreview = get<HTMLButtonElement>("collection-import-preview");
+  const importCancel = get<HTMLButtonElement>("collection-import-cancel");
+  const importStatus = get("collection-import-status");
+  const importSummary = get("collection-import-summary");
+  const importResults = get<HTMLUListElement>("collection-import-results");
+  const importSave = get<HTMLButtonElement>("collection-import-save");
+
+  let importController: AbortController | undefined;
+  let importGeneration = 0;
+  let importWorking = false;
+  let importSaving = false;
+  interface CollectionImportRow {
+    match: ImportMatch;
+    included: boolean;
+    quantity: number;
+    finish: ImportFinish | null;
+  }
+
+  let collectionImportRows: CollectionImportRow[] = [];
+
+  function collectionImportProblem(item: CollectionImportRow): string | null {
+    if (item.match.row.isProxy === true) {
+      return "This row is marked as a proxy. Exclude it from this import.";
+    }
+
+    const card = item.match.card;
+    if (!card) return item.match.issue ?? "No matching printing found.";
+
+    if (!item.finish || !card.finishes.includes(item.finish)) {
+      return "Choose an available finish.";
+    }
+
+    if (
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity < 1 ||
+      item.quantity > 1000
+    ) {
+      return "Quantity must be a whole number between 1 and 1,000.";
+    }
+
+    return null;
+  }
+
+  function updateCollectionImportSummary() {
+    const included = collectionImportRows.filter((item) => item.included);
+    const problems = included.filter(collectionImportProblem);
+    const copies = included.reduce(
+      (sum, item) =>
+        sum + (Number.isSafeInteger(item.quantity) ? item.quantity : 0),
+      0,
+    );
+
+    importSummary.textContent = collectionImportRows.length
+      ? `${included.length} selected rows · ${copies} copies · ${problems.length} rows need attention`
+      : "";
+
+    importSave.disabled =
+      !userId ||
+      !selectedLocation ||
+      loading ||
+      saving ||
+      importWorking ||
+      importSaving ||
+      included.length === 0 ||
+      problems.length > 0;
+  }
+
+  function renderCollectionImport() {
+    importResults.replaceChildren();
+
+    for (const item of collectionImportRows) {
+      const row = document.createElement("li");
+      const label = document.createElement("label");
+      const include = document.createElement("input");
+      include.type = "checkbox";
+      include.checked = item.included;
+      include.addEventListener("change", () => {
+        item.included = include.checked;
+        updateCollectionImportSummary();
+      });
+      label.append(
+        include,
+        document.createTextNode(
+          ` ${item.match.card?.name ?? item.match.row.name}`,
+        ),
+      );
+
+      const details = document.createElement("p");
+      const card = item.match.card;
+      details.textContent = card
+        ? `${card.set_name} #${card.collector_number}${
+            item.match.automaticPrinting
+              ? " · Automatically selected printing"
+              : ""
+          }`
+        : `Source row ${item.match.row.line}`;
+
+      const fields = document.createElement("div");
+      fields.className = "import-row-fields";
+
+      const quantityLabel = document.createElement("label");
+      quantityLabel.textContent = "Copies";
+      const quantity = document.createElement("input");
+      quantity.type = "number";
+      quantity.min = "1";
+      quantity.max = "1000";
+      quantity.step = "1";
+      quantity.required = true;
+      quantity.value = String(item.quantity);
+      quantityLabel.append(quantity);
+
+      const finishLabel = document.createElement("label");
+      finishLabel.textContent = "Finish";
+      const finish = document.createElement("select");
+      finish.add(new Option("Choose finish", ""));
+
+      for (const value of card?.finishes ?? []) {
+        if (!["nonfoil", "foil", "etched"].includes(value)) continue;
+        finish.add(
+          new Option(
+            value === "nonfoil"
+              ? "Nonfoil"
+              : value === "etched"
+                ? "Etched foil"
+                : "Foil",
+            value,
+          ),
+        );
+      }
+
+      finish.value = item.finish ?? "";
+      finish.disabled = !card;
+      finishLabel.append(finish);
+      fields.append(quantityLabel, finishLabel);
+
+      const issue = document.createElement("p");
+      issue.className = "import-row-issue";
+
+      const updateIssue = () => {
+        issue.textContent = collectionImportProblem(item) ?? "";
+        updateCollectionImportSummary();
+      };
+
+      quantity.addEventListener("input", () => {
+        item.quantity = Number(quantity.value);
+        updateIssue();
+      });
+
+      finish.addEventListener("change", () => {
+        item.finish = finish.value ? (finish.value as ImportFinish) : null;
+        updateIssue();
+      });
+
+      row.append(label, details, fields, issue);
+      importResults.append(row);
+      updateIssue();
+    }
+
+    updateCollectionImportSummary();
+  }
+
+  function invalidateCollectionImport() {
+    importGeneration++;
+    importController?.abort();
+    importWorking = false;
+    collectionImportRows = [];
+    importResults.replaceChildren();
+    importSummary.textContent = "";
+    importStatus.textContent = "";
+    importSave.disabled = true;
+    importCancel.hidden = true;
+    importPreview.disabled = false;
+  }
+
+  importText.addEventListener("input", invalidateCollectionImport);
+  importFormat.addEventListener("change", invalidateCollectionImport);
+
+  importFile.addEventListener("change", async () => {
+    invalidateCollectionImport();
+    const file = importFile.files?.[0];
+    if (!file) return;
+
+    if (file.size > 1_000_000) {
+      importStatus.textContent = "Maximum file size: 1 MB.";
+      return;
+    }
+
+    const generation = importGeneration;
+
+    try {
+      const text = await file.text();
+      if (generation !== importGeneration) return;
+
+      importText.value = text;
+      importFormat.value = file.name.toLowerCase().endsWith(".csv")
+        ? "csv"
+        : "text";
+      importStatus.textContent = `Loaded “${file.name}”. Click Preview import.`;
+    } catch {
+      if (generation === importGeneration) {
+        importStatus.textContent = "Couldn’t read this file. Please try again.";
+      }
+    }
+  });
+
+  importCancel.addEventListener("click", () => {
+    invalidateCollectionImport();
+    importStatus.textContent = "Lookup cancelled. No cards were added.";
+  });
+
+  importPreview.addEventListener("click", async () => {
+    if (!userId || !selectedLocation || loading || saving || importSaving) {
+      return;
+    }
+
+    invalidateCollectionImport();
+
+    const parsed = parseCardList(
+      importText.value,
+      importFormat.value === "csv" ? "csv" : "text",
+    );
+
+    if (parsed.issues.length) {
+      importStatus.textContent = parsed.issues.join("\n");
+      return;
+    }
+
+    const generation = importGeneration;
+    const current = version;
+    const request = locationRequest;
+    const controller = new AbortController();
+    importController = controller;
+    importWorking = true;
+    importPreview.disabled = true;
+    importCancel.hidden = false;
+
+    const isCurrent = () =>
+      generation === importGeneration &&
+      current === version &&
+      request === locationRequest &&
+      !controller.signal.aborted;
+
+    try {
+      for (const [index, source] of parsed.rows.entries()) {
+        if (!isCurrent()) return;
+
+        importStatus.textContent = `Matching ${index + 1} of ${parsed.rows.length}: ${source.name}…`;
+
+        let match: ImportMatch;
+
+        try {
+          match = await matchImportRow(source, controller.signal);
+        } catch (error) {
+          if (!isCurrent()) return;
+
+          match = {
+            row: source,
+            card: null,
+            finish: source.finish,
+            automaticPrinting: false,
+            issue:
+              error instanceof Error
+                ? error.message
+                : "Lookup failed. Preview again to retry.",
+          };
+        }
+
+        if (!isCurrent()) return;
+
+        collectionImportRows.push({
+          match,
+          included: true,
+          quantity: source.quantity,
+          finish: match.finish,
+        });
+      }
+
+      importStatus.textContent =
+        "Review the printings, finishes, and quantities. Uncheck any rows you don’t want to import.";
+    } finally {
+      if (isCurrent()) {
+        importWorking = false;
+        importPreview.disabled = false;
+        importCancel.hidden = true;
+        renderCollectionImport();
+      }
+    }
+  });
+
+  importSave.addEventListener("click", async () => {
+    if (
+      !userId ||
+      !selectedLocation ||
+      loading ||
+      saving ||
+      importWorking ||
+      importSaving
+    ) {
+      return;
+    }
+
+    const included = collectionImportRows.filter((item) => item.included);
+
+    if (!included.length || included.some(collectionImportProblem)) {
+      importStatus.textContent =
+        "Review the selected rows and resolve their issues before saving.";
+      updateCollectionImportSummary();
+      return;
+    }
+
+    const current = version;
+    const targetUser = userId;
+    const location = selectedLocation;
+    const request = locationRequest;
+    const generation = importGeneration;
+
+    const isCurrent = () =>
+      current === version &&
+      targetUser === userId &&
+      request === locationRequest &&
+      selectedLocation?.id === location.id &&
+      generation === importGeneration;
+
+    const cards = included.map((item) => {
+      const card = item.match.card!;
+
+      return {
+        scryfall_id: card.id,
+        oracle_id: card.oracle_id ?? null,
+        name: card.name,
+        set_code: card.set,
+        set_name: card.set_name,
+        collector_number: card.collector_number,
+        finish: item.finish!,
+        quantity: item.quantity,
+      };
+    });
+
+    const copies = cards.reduce((sum, card) => sum + card.quantity, 0);
+
+    const dialogControls = Array.from(
+      importDialog.querySelectorAll<
+        | HTMLButtonElement
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+      >("button, input, select, textarea"),
+    );
+    const previousDisabled = dialogControls.map((field) => field.disabled);
+
+    let saved = false;
+    importSaving = true;
+    saving = true;
+    controls();
+
+    for (const field of dialogControls) field.disabled = true;
+
+    importStatus.textContent = `Adding ${copies} copies to “${location.name}”…`;
+    importStatus.scrollIntoView({ block: "nearest" });
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (!isCurrent()) return;
+
+      if (sessionError || session?.user.id !== targetUser) {
+        throw new Error("Your sign-in changed. Reload before importing.");
+      }
+
+      const payload = JSON.stringify({
+        user: targetUser,
+        location: location.id,
+        cards,
+      });
+
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(payload),
+      );
+
+      if (!isCurrent()) return;
+
+      const fingerprint = Array.from(new Uint8Array(digest))
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join("");
+
+      const retryKey = `collection-import:${fingerprint}`;
+      let requestId = sessionStorage.getItem(retryKey);
+
+      if (!requestId) {
+        requestId = crypto.randomUUID();
+        sessionStorage.setItem(retryKey, requestId);
+      }
+
+      const { data, error } = await supabase.rpc("import_collection_cards", {
+        p_request_id: requestId,
+        p_location_id: location.id,
+        p_cards: cards,
+      });
+
+      if (!isCurrent()) return;
+
+      if (error) {
+        throw new Error(
+          `${error.message} Keep the same selections and click Add reviewed cards to retry.`,
+        );
+      }
+
+      if (data !== requestId) {
+        throw new Error(
+          "Couldn’t confirm the import. Keep the same selections and retry to check the original request safely.",
+        );
+      }
+
+      saved = true;
+
+      try {
+        sessionStorage.removeItem(retryKey);
+      } catch {
+        // The import succeeded even if browser storage cleanup failed.
+      }
+
+      importText.value = "";
+      importFile.value = "";
+      resetCollectionImport();
+    } catch (error) {
+      if (isCurrent()) {
+        importStatus.textContent =
+          error instanceof Error
+            ? error.message
+            : "Couldn’t confirm the import. Keep the same selections and retry.";
+        importStatus.scrollIntoView({ block: "nearest" });
+      }
+    } finally {
+      importSaving = false;
+
+      if (current === version) {
+        saving = false;
+      }
+
+      dialogControls.forEach((field, index) => {
+        field.disabled = previousDisabled[index];
+      });
+
+      controls();
+      updateCollectionImportSummary();
+    }
+
+    if (
+      saved &&
+      current === version &&
+      targetUser === userId &&
+      request === locationRequest &&
+      selectedLocation?.id === location.id
+    ) {
+      await openLocation(location);
+
+      if (
+        current === version &&
+        targetUser === userId &&
+        selectedLocation?.id === location.id
+      ) {
+        status.textContent = `Imported ${copies} copies into “${location.name}”.`;
+      }
+    }
+  });
+
+  function resetCollectionImport() {
+    importGeneration++;
+    collectionImportRows = [];
+    importController?.abort();
+    importController = undefined;
+    importWorking = false;
+    importStatus.textContent = "";
+    importSummary.textContent = "";
+    importResults.replaceChildren();
+    importSave.disabled = true;
+    importCancel.hidden = true;
+    importPreview.disabled = false;
+    importDialog.close();
+  }
+
+  importButton.addEventListener("click", () => {
+    if (!userId || loading || saving || !selectedLocation) return;
+
+    importDestination.textContent = `Adding cards to “${selectedLocation.name}”.`;
+    importDialog.showModal();
+  });
+
+  importDialog.addEventListener("cancel", (event) => {
+    if (importSaving) event.preventDefault();
+  });
+
+  importDialog
+    .querySelector<HTMLFormElement>('form[method="dialog"]')!
+    .addEventListener("submit", (event) => {
+      if (importSaving) event.preventDefault();
+    });
+
+  importDialog.addEventListener("close", () => {
+    importGeneration++;
+    importController?.abort();
+    importWorking = false;
+    importCancel.hidden = true;
+    importPreview.disabled = false;
+  });
+
   function controls() {
     const disabled = !userId || loading || saving;
+    importButton.disabled = disabled || !selectedLocation;
     nameInput.disabled = disabled;
     addButton.disabled = disabled;
     dumpButton.disabled =
@@ -1847,5 +2710,227 @@ import Layout from "@/layouts/Layout.astro";
     border-radius: 0.75rem;
     background: #10071b;
     box-shadow: 0 8px 24px #0009;
+  }
+
+  #open-collection-import {
+    margin-top: 1rem;
+  }
+
+  #collection-import-dialog {
+    width: min(850px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 1.5rem;
+    overflow-y: auto;
+    border: 1px solid #a444fc;
+    border-radius: 1rem;
+    background: #10071b;
+    color: #f7f3ff;
+  }
+
+  #collection-import-dialog::backdrop {
+    background: rgb(0 0 0 / 75%);
+  }
+
+  #collection-import-heading {
+    margin: 1rem 0 0.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  #collection-import-dialog label {
+    display: block;
+    margin: 1rem 0 0.5rem;
+    font-weight: 600;
+  }
+
+  #collection-import-dialog select,
+  #collection-import-dialog textarea,
+  #collection-import-dialog input[type="file"] {
+    width: 100%;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+  }
+
+  #collection-import-dialog textarea {
+    resize: vertical;
+  }
+
+  #collection-import-dialog button {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #a444fc;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #collection-import-dialog button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #collection-import-dialog :focus-visible {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  #collection-import-dialog .import-help {
+    margin-top: 1rem;
+    color: #c8bdd4;
+    line-height: 1.6;
+  }
+
+  .import-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  #collection-import-status,
+  #collection-import-summary {
+    margin-top: 1rem;
+    overflow-wrap: anywhere;
+  }
+
+  #collection-import-results {
+    display: grid;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  #collection-import-save {
+    width: 100%;
+  }
+
+  #collection-import-status {
+    white-space: pre-line;
+  }
+
+  #collection-import-results :global(li) {
+    padding: 1rem;
+    border: 1px solid #a444fc55;
+    border-radius: 0.75rem;
+    background: #000;
+  }
+
+  #collection-import-results :global(li > label) {
+    margin: 0 0 0.5rem;
+  }
+
+  #collection-import-results :global(input[type="checkbox"]) {
+    width: 1.125rem;
+    height: 1.125rem;
+    accent-color: #b5fb14;
+    vertical-align: middle;
+  }
+
+  #collection-import-results :global(.import-row-fields) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  #collection-import-results :global(.import-row-fields label) {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+
+  #collection-import-results :global(input[type="number"]),
+  #collection-import-results :global(select) {
+    display: block;
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.625rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #10071b;
+    color: #f7f3ff;
+  }
+
+  #collection-import-results :global(.import-row-issue) {
+    margin-top: 0.5rem;
+    color: #fda4af;
+  }
+
+  #location-cards :global(.stored-card-selection) {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 0.5rem;
+    cursor: pointer;
+  }
+
+  #location-cards :global(.stored-card-selection input) {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    accent-color: #b5fb14;
+  }
+
+  #location-cards :global(.collection-batch-toolbar) {
+    background: #190d27;
+  }
+
+  #location-cards :global(.collection-batch-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+  }
+
+  #location-cards :global(.collection-batch-toolbar > label) {
+    display: block;
+    margin: 1rem 0;
+    font-weight: 600;
+  }
+
+  #location-cards :global(.collection-batch-toolbar select) {
+    display: block;
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #f7f3ff;
+  }
+
+  #location-cards :global(.collection-batch-actions button) {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #000;
+    color: #d8a9ff;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #location-cards
+    :global(.collection-batch-actions button:hover:not(:disabled)) {
+    background: #28113d;
+  }
+
+  #location-cards :global(.collection-batch-actions button:disabled) {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  #location-cards :global(.collection-batch-actions button:focus-visible) {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
   }
 </style>

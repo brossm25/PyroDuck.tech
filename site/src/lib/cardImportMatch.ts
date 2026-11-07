@@ -114,14 +114,18 @@ export async function matchImportRow(
     row,
     card: null,
     finish: row.finish,
-    automaticPrinting: !row.set || !row.collector,
+    automaticPrinting: !row.scryfallId && (!row.set || !row.collector),
     issue: null,
   };
 
   let endpoint: URL;
   let searchResult = false;
 
-  if (row.set && row.collector) {
+  if (row.scryfallId) {
+    endpoint = new URL(
+      `https://api.scryfall.com/cards/${encodeURIComponent(row.scryfallId)}`,
+    );
+  } else if (row.set && row.collector) {
     endpoint = new URL(
       `https://api.scryfall.com/cards/` +
         `${encodeURIComponent(row.set.toLowerCase())}/` +
@@ -146,7 +150,7 @@ export async function matchImportRow(
 
   if (response.status === 404) {
     result.issue =
-      row.set && row.collector
+      row.scryfallId || (row.set && row.collector)
         ? "Exact printing not found. Choose a version."
         : "Card not found. Check the name or choose a version.";
     return result;
@@ -173,6 +177,15 @@ export async function matchImportRow(
 
   if (!card?.id || !Array.isArray(card.finishes)) {
     throw new Error("Scryfall returned incomplete card information.");
+  }
+
+  if (
+    row.scryfallId &&
+    card.id.toLowerCase() !== row.scryfallId.toLowerCase()
+  ) {
+    result.issue =
+      "The returned printing did not match the exported Scryfall ID.";
+    return result;
   }
 
   const names = [
