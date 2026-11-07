@@ -534,6 +534,84 @@ import Layout from "@/layouts/Layout.astro";
     }
   });
 
+  async function saveStoredQuantity(card: StoredCard, quantity: number) {
+    if (!userId || loading || saving || !selectedLocation) return;
+
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000) {
+      cardsStatus.textContent =
+        "Enter a whole-number quantity between 1 and 1,000,000.";
+      return;
+    }
+
+    const current = version;
+    const request = locationRequest;
+    const targetUser = userId;
+    const location = selectedLocation;
+    const isCurrent = () =>
+      current === version &&
+      request === locationRequest &&
+      userId === targetUser;
+
+    let saved = false;
+    saving = true;
+    controls();
+    cardsStatus.textContent = `Saving quantity for ${card.name}…`;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (!isCurrent()) return;
+      if (sessionError || session?.user.id !== targetUser) {
+        throw new Error("Your sign-in changed. Reload before editing cards.");
+      }
+
+      const { data, error } = await supabase
+        .from("collection_cards")
+        .update({ quantity })
+        .eq("id", card.id)
+        .eq("user_id", targetUser)
+        .eq("location_id", location.id)
+        .eq("quantity", card.quantity)
+        .select("id")
+        .maybeSingle();
+
+      if (!isCurrent()) return;
+
+      if (error) {
+        throw new Error(
+          "Couldn’t confirm the quantity change. Reopen this location to check before retrying.",
+        );
+      }
+
+      if (!data) {
+        throw new Error(
+          "This card changed since it loaded. Reopen this location before editing its quantity.",
+        );
+      }
+
+      saved = true;
+    } catch (error) {
+      if (isCurrent()) {
+        cardsStatus.textContent =
+          error instanceof Error
+            ? error.message
+            : "Couldn’t save the quantity.";
+      }
+    } finally {
+      if (current === version) {
+        saving = false;
+        controls();
+      }
+    }
+
+    if (saved && isCurrent()) {
+      await openLocation(location);
+    }
+  }
+
   async function openLocation(location: StorageLocation) {
     if (!userId || loading || saving) return;
 
@@ -582,7 +660,65 @@ import Layout from "@/layouts/Layout.astro";
         name.textContent = `${card.quantity} × ${card.name}`;
         details.textContent = `${card.set_name} #${card.collector_number} · ${card.finish}`;
 
-        item.append(name, details);
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit quantity";
+        edit.setAttribute("aria-expanded", "false");
+
+        const quantityForm = document.createElement("form");
+        quantityForm.className = "stored-quantity-form";
+        quantityForm.hidden = true;
+
+        const label = document.createElement("label");
+        label.textContent = "Total copies stored here";
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "1";
+        input.max = "1000000";
+        input.step = "1";
+        input.required = true;
+        input.value = String(card.quantity);
+        label.append(input);
+
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.textContent = "Save quantity";
+
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+
+        edit.addEventListener("click", () => {
+          if (!isCurrent() || saving) return;
+          quantityForm.hidden = !quantityForm.hidden;
+          edit.setAttribute("aria-expanded", String(!quantityForm.hidden));
+          if (!quantityForm.hidden) {
+            input.value = String(card.quantity);
+            input.focus();
+          }
+        });
+
+        cancel.addEventListener("click", () => {
+          quantityForm.hidden = true;
+          edit.setAttribute("aria-expanded", "false");
+          edit.focus();
+        });
+
+        quantityForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (!isCurrent() || saving || !input.reportValidity()) return;
+
+          save.disabled = true;
+          try {
+            await saveStoredQuantity(card, Number(input.value));
+          } finally {
+            save.disabled = false;
+          }
+        });
+
+        quantityForm.append(label, save, cancel);
+        item.append(name, details, edit, quantityForm);
         cardsList.append(item);
       }
 
@@ -1039,5 +1175,133 @@ import Layout from "@/layouts/Layout.astro";
   #collection-picker #collection-save:focus-visible {
     outline: 2px solid #b5fb14;
     outline-offset: 3px;
+  }
+
+  #location-cards {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  #location-cards :global(li) {
+    padding: 1rem;
+    border: 1px solid #a444fc55;
+    border-radius: 0.75rem;
+    background: #000;
+  }
+
+  #location-cards :global(p) {
+    margin: 0.4rem 0 0.75rem;
+    color: #c4b8d2;
+  }
+
+  #location-cards :global(.stored-quantity-form:not([hidden])) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  #location-cards :global(.stored-quantity-form label) {
+    flex: 1 1 200px;
+    margin: 0;
+  }
+
+  #location-cards :global(.stored-quantity-form input) {
+    display: block;
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+
+  #location-cards :global(li > button) {
+    min-height: 44px;
+    margin-top: 0.25rem;
+    padding: 0.6rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #d5a6ff;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #location-cards :global(.stored-quantity-form:not([hidden])) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #a444fc44;
+  }
+
+  #location-cards :global(.stored-quantity-form label) {
+    flex: 0 1 220px;
+    margin: 0;
+    color: #c4b8d2;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  #location-cards :global(.stored-quantity-form input) {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-height: 46px;
+    margin-top: 0.5rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #10071b;
+    color: #f7f3ff;
+    font-size: 1rem;
+  }
+
+  #location-cards :global(.stored-quantity-form button) {
+    min-height: 46px;
+    padding: 0.65rem 1rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #location-cards :global(button[type="submit"]) {
+    background: #a444fc;
+    color: #000;
+  }
+
+  #location-cards :global(.stored-quantity-form button[type="button"]) {
+    background: transparent;
+    color: #f7f3ff;
+    border-color: #665373;
+  }
+
+  #location-cards :global(button:hover:not(:disabled)) {
+    border-color: #b5fb14;
+  }
+
+  #location-cards :global(button:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #location-cards :global(input:focus-visible),
+  #location-cards :global(button:focus-visible) {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 540px) {
+    #location-cards :global(.stored-quantity-form label) {
+      flex-basis: 100%;
+    }
+
+    #location-cards :global(.stored-quantity-form button) {
+      flex: 1;
+    }
   }
 </style>
