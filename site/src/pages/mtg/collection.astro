@@ -217,6 +217,9 @@ import Layout from "@/layouts/Layout.astro";
     collector_number: string;
     finish: string;
     quantity: number;
+    type_line: string | null;
+    rarity: string | null;
+    scryfall_id: string;
   }
 
   const cardsPanel = get("location-cards-panel");
@@ -432,6 +435,14 @@ import Layout from "@/layouts/Layout.astro";
         set_code: (card as DeckCard & { set: string }).set,
         set_name: card.set_name,
         collector_number: card.collector_number,
+        type_line:
+          card.type_line ??
+          ((card.card_faces ?? [])
+            .map((face) => face.type_line)
+            .filter(Boolean)
+            .join(" // ") ||
+            null),
+        rarity: card.rarity ?? null,
         finish,
         quantity,
       };
@@ -808,7 +819,9 @@ import Layout from "@/layouts/Layout.astro";
         async (from, to) => {
           const result = await supabase
             .from("collection_cards")
-            .select("id, name, set_name, collector_number, finish, quantity")
+            .select(
+              "id, scryfall_id, name, set_name, collector_number, finish, quantity, type_line, rarity",
+            )
             .eq("user_id", targetUser)
             .eq("location_id", location.id)
             .order("name")
@@ -1057,6 +1070,159 @@ import Layout from "@/layouts/Layout.astro";
         updateSelection();
       });
 
+      const refreshDetails = document.createElement("button");
+      refreshDetails.type = "button";
+      refreshDetails.textContent = "Refresh card details";
+
+      refreshDetails.addEventListener("click", async () => {
+        if (!isCurrent() || saving || loading || !userId) return;
+
+        const refreshUser = userId;
+        const controller = new AbortController();
+        let updated = 0;
+        let failed = 0;
+        let completed = false;
+
+        saving = true;
+        controls();
+        updateSelection();
+        refreshDetails.disabled = true;
+
+        try {
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession();
+
+          if (!isCurrent()) return;
+
+          if (sessionError || session?.user.id !== refreshUser) {
+            throw new Error(
+              "Your sign-in changed. Reload before refreshing cards.",
+            );
+          }
+
+          const printings = [...new Set(cards.map((card) => card.scryfall_id))];
+
+          for (const [index, printingId] of printings.entries()) {
+            if (!isCurrent()) return;
+
+            selectionStatus.textContent = `Refreshing printing ${index + 1} of ${printings.length}…`;
+
+            try {
+              const endpoint = new URL(
+                `https://api.scryfall.com/cards/${encodeURIComponent(printingId)}`,
+              );
+              const response = await fetchImportCard(
+                endpoint,
+                controller.signal,
+              );
+
+              if (!isCurrent()) return;
+              if (!response.ok) throw new Error("Card lookup failed.");
+
+              const card = (await response.json()) as DeckCard;
+
+              if (!isCurrent()) return;
+              if (card.id !== printingId) {
+                throw new Error("The returned printing did not match.");
+              }
+
+              const typeLine =
+                card.type_line ??
+                ((card.card_faces ?? [])
+                  .map((face) => face.type_line)
+                  .filter(Boolean)
+                  .join(" // ") ||
+                  null);
+
+              const rarity = card.rarity;
+
+              if (
+                !typeLine ||
+                !rarity ||
+                ![
+                  "common",
+                  "uncommon",
+                  "rare",
+                  "mythic",
+                  "special",
+                  "bonus",
+                ].includes(rarity)
+              ) {
+                throw new Error("Card details were incomplete.");
+              }
+
+              for (const stored of cards.filter(
+                (item) => item.scryfall_id === printingId,
+              )) {
+                if (!isCurrent()) return;
+
+                const { data, error } = await supabase
+                  .from("collection_cards")
+                  .update({ type_line: typeLine, rarity })
+                  .eq("id", stored.id)
+                  .eq("user_id", refreshUser)
+                  .eq("location_id", location.id)
+                  .eq("scryfall_id", printingId)
+                  .select("id")
+                  .maybeSingle();
+
+                if (!isCurrent()) return;
+
+                if (error || !data) failed++;
+                else updated++;
+              }
+            } catch {
+              if (!isCurrent()) return;
+
+              failed += cards.filter(
+                (item) => item.scryfall_id === printingId,
+              ).length;
+            }
+          }
+
+          completed = true;
+        } catch (error) {
+          if (isCurrent()) {
+            status.textContent =
+              error instanceof Error
+                ? error.message
+                : "Couldn’t refresh card details. Please try again.";
+          }
+        } finally {
+          controller.abort();
+
+          if (current === version) {
+            saving = false;
+            controls();
+          }
+
+          if (isCurrent()) {
+            refreshDetails.disabled = false;
+            updateSelection();
+          }
+        }
+
+        if (completed && isCurrent()) {
+          await openLocation(location);
+
+          if (
+            current === version &&
+            userId === refreshUser &&
+            selectedLocation?.id === location.id
+          ) {
+            status.textContent =
+              `Updated details for ${updated} entries.` +
+              (failed
+                ? ` ${failed} entries could not be confirmed. Refresh card details again to retry.`
+                : "");
+          }
+        }
+      });
+
+      selectionActions.append(refreshDetails);
+
       selectionActions.append(selectAll, clearSelection);
       toolbar.append(
         selectionStatus,
@@ -1099,7 +1265,18 @@ import Layout from "@/layouts/Layout.astro";
         selectionLabel.append(checkbox, name);
 
         name.textContent = `${card.quantity} × ${card.name}`;
-        details.textContent = `${card.set_name} #${card.collector_number} · ${card.finish}`;
+        const rarity = card.rarity
+          ? card.rarity.charAt(0).toUpperCase() + card.rarity.slice(1)
+          : null;
+
+        details.textContent = [
+          `${card.set_name} #${card.collector_number}`,
+          card.finish,
+          card.type_line,
+          rarity,
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
         const edit = document.createElement("button");
         edit.type = "button";
@@ -1630,6 +1807,14 @@ import Layout from "@/layouts/Layout.astro";
         set_code: card.set,
         set_name: card.set_name,
         collector_number: card.collector_number,
+        type_line:
+          card.type_line ??
+          ((card.card_faces ?? [])
+            .map((face) => face.type_line)
+            .filter(Boolean)
+            .join(" // ") ||
+            null),
+        rarity: card.rarity ?? null,
         finish: item.finish!,
         quantity: item.quantity,
       };

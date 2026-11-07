@@ -9,6 +9,7 @@ export interface DeckCard {
   prints_search_uri: string;
   finishes: string[];
   type_line?: string;
+  rarity?: string;
   mana_cost?: string;
   cmc?: number;
   colors?: string[];
