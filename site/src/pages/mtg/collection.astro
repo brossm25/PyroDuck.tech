@@ -612,6 +612,109 @@ import Layout from "@/layouts/Layout.astro";
     }
   }
 
+  async function moveStoredCopies(
+    card: StoredCard,
+    destinationId: string,
+    quantity: number,
+  ) {
+    if (!userId || loading || saving || !selectedLocation) return;
+
+    const source = selectedLocation;
+    const destination = locations.find((item) => item.id === destinationId);
+
+    if (
+      !destination ||
+      destination.id === source.id ||
+      !Number.isSafeInteger(quantity) ||
+      quantity < 1 ||
+      quantity > card.quantity
+    ) {
+      cardsStatus.textContent =
+        "Choose another location and a quantity within the stored total.";
+      return;
+    }
+
+    const current = version;
+    const request = locationRequest;
+    const targetUser = userId;
+    const isCurrent = () =>
+      current === version &&
+      request === locationRequest &&
+      userId === targetUser;
+
+    let moved = false;
+    saving = true;
+    controls();
+    cardsStatus.textContent = `Moving ${quantity} × ${card.name}…`;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (!isCurrent()) return;
+      if (sessionError || session?.user.id !== targetUser) {
+        throw new Error("Your sign-in changed. Reload before moving cards.");
+      }
+
+      const payload = {
+        p_entry_id: card.id,
+        p_source_location_id: source.id,
+        p_destination_location_id: destination.id,
+        p_expected_quantity: card.quantity,
+        p_quantity: quantity,
+      };
+
+      const retryKey =
+        "binderlink:collection-move:" +
+        JSON.stringify({
+          userId: targetUser,
+          ...payload,
+        });
+
+      let requestId = sessionStorage.getItem(retryKey);
+      if (!requestId) {
+        requestId = crypto.randomUUID();
+        sessionStorage.setItem(retryKey, requestId);
+      }
+
+      const { data, error } = await supabase.rpc(
+        "move_collection_card_copies",
+        {
+          p_request_id: requestId,
+          ...payload,
+        },
+      );
+
+      if (!isCurrent()) return;
+      if (error) throw new Error(error.message);
+      if (typeof data !== "string") {
+        throw new Error("The server did not confirm the move.");
+      }
+
+      sessionStorage.removeItem(retryKey);
+      moved = true;
+    } catch (error) {
+      if (isCurrent()) {
+        const detail = error instanceof Error ? error.message : "Move failed.";
+        cardsStatus.textContent = `${detail} Check both locations before starting a different move.`;
+      }
+    } finally {
+      if (current === version) {
+        saving = false;
+        controls();
+      }
+    }
+
+    if (moved && isCurrent()) {
+      await openLocation(source);
+      if (current === version && selectedLocation?.id === source.id) {
+        status.textContent = `Moved ${quantity} × ${card.name} to ${destination.name}.`;
+      }
+    }
+  }
+
   async function openLocation(location: StorageLocation) {
     if (!userId || loading || saving) return;
 
@@ -718,7 +821,100 @@ import Layout from "@/layouts/Layout.astro";
         });
 
         quantityForm.append(label, save, cancel);
-        item.append(name, details, edit, quantityForm);
+
+        const move = document.createElement("button");
+        move.type = "button";
+        move.textContent = "Move cards";
+        move.setAttribute("aria-expanded", "false");
+
+        const moveForm = document.createElement("form");
+        moveForm.className = "stored-quantity-form stored-move-form";
+        moveForm.hidden = true;
+
+        const destinationLabel = document.createElement("label");
+        destinationLabel.textContent = "Move to";
+
+        const destinationSelect = document.createElement("select");
+        destinationSelect.required = true;
+        destinationSelect.add(new Option("Choose a location", ""));
+
+        for (const destination of [...locations].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        )) {
+          if (destination.id === location.id) continue;
+          destinationSelect.add(new Option(destination.name, destination.id));
+        }
+
+        destinationLabel.append(destinationSelect);
+        move.disabled = destinationSelect.options.length < 2;
+
+        const amountLabel = document.createElement("label");
+        amountLabel.textContent = "Copies to move";
+
+        const amount = document.createElement("input");
+        amount.type = "number";
+        amount.min = "1";
+        amount.max = String(card.quantity);
+        amount.step = "1";
+        amount.required = true;
+        amount.value = "1";
+        amountLabel.append(amount);
+
+        const moveSave = document.createElement("button");
+        moveSave.type = "submit";
+        moveSave.textContent = "Move copies";
+
+        const moveCancel = document.createElement("button");
+        moveCancel.type = "button";
+        moveCancel.textContent = "Cancel";
+
+        move.addEventListener("click", () => {
+          if (!isCurrent() || saving) return;
+
+          moveForm.hidden = !moveForm.hidden;
+          move.setAttribute("aria-expanded", String(!moveForm.hidden));
+
+          if (!moveForm.hidden) {
+            quantityForm.hidden = true;
+            edit.setAttribute("aria-expanded", "false");
+            destinationSelect.focus();
+          }
+        });
+
+        moveCancel.addEventListener("click", () => {
+          moveForm.hidden = true;
+          move.setAttribute("aria-expanded", "false");
+          move.focus();
+        });
+
+        edit.addEventListener("click", () => {
+          if (!isCurrent() || saving) return;
+          moveForm.hidden = true;
+          move.setAttribute("aria-expanded", "false");
+        });
+
+        moveForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (!isCurrent() || saving || !moveForm.reportValidity()) return;
+
+          const destinationId = destinationSelect.value;
+          const quantity = Number(amount.value);
+          moveSave.disabled = true;
+          destinationSelect.disabled = true;
+          amount.disabled = true;
+
+          try {
+            await moveStoredCopies(card, destinationId, quantity);
+          } finally {
+            moveSave.disabled = false;
+            destinationSelect.disabled = false;
+            amount.disabled = false;
+          }
+        });
+
+        moveForm.append(destinationLabel, amountLabel, moveSave, moveCancel);
+
+        item.append(name, details, edit, move, quantityForm, moveForm);
         cardsList.append(item);
       }
 
@@ -1302,6 +1498,43 @@ import Layout from "@/layouts/Layout.astro";
 
     #location-cards :global(.stored-quantity-form button) {
       flex: 1;
+    }
+  }
+
+  #location-cards :global(li > button + button) {
+    margin-left: 0.75rem;
+  }
+
+  #location-cards :global(.stored-move-form select) {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-height: 46px;
+    margin-top: 0.5rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #a444fc;
+    border-radius: 0.5rem;
+    background: #10071b;
+    color: #f7f3ff;
+    font-size: 1rem;
+  }
+
+  #location-cards :global(.stored-move-form select:focus-visible) {
+    outline: 2px solid #b5fb14;
+    outline-offset: 3px;
+  }
+
+  #location-cards :global(.stored-move-form label:first-child) {
+    flex: 1 1 220px;
+  }
+
+  #location-cards :global(.stored-move-form label:nth-child(2)) {
+    flex: 0 1 150px;
+  }
+
+  @media (max-width: 540px) {
+    #location-cards :global(.stored-move-form label:nth-child(2)) {
+      flex-basis: 100%;
     }
   }
 </style>
